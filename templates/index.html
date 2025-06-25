@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Text-to-Design</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="chat-header">
+    <div class="header-left">AI Text-to-Design</div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="chat-shell" id="chat-shell">
+    <h1 class="welcome" id="welcome">Enter your prompt below</h1>
+
+    <div id="chat-box" class="chat-box"></div>
+
+    <!-- Unified Prompt Input -->
+    <div class="input-bar" id="input-bar">
+      <textarea id="user-input" rows="1" placeholder="Enter your prompt here..."></textarea>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+      <button onclick="tunePrompt()">Tune Prompt</button>
+      <button onclick="generateImage()">Generate Image</button>
+    </div>
+  </main>
+
+  <!-- JavaScript -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const ta = document.getElementById('user-input');
+      const chatBox = document.getElementById("chat-box");
+
+      ta.addEventListener('input', () => {
+        ta.style.height = 'auto';
+        ta.style.height = ta.scrollHeight + 'px';
+      });
+
+      window.tunePrompt = function () {
+        const idea = ta.value.trim();
+        if (!idea) return;
+
+        document.body.classList.add("active-chat");
+        document.getElementById("welcome").style.display = "none";
+
+        chatBox.innerHTML += `<div class="msg user">💡 ${idea}</div>`;
+
+        const loadingId = `loading-${Date.now()}`;
+        chatBox.innerHTML += `<div class="msg bot" id="${loadingId}">⏳ Tuning prompt...</div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        fetch("/generate-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea: idea })
+        })
+        .then(res => res.json())
+        .then(data => {
+          const loadingEl = document.getElementById(loadingId);
+          if (data.prompt) {
+            const promptId = `prompt-${Date.now()}`;
+            loadingEl.innerHTML = `
+              ✨ Refined Prompt: <span id="${promptId}">${data.prompt}</span>
+              <button class="copy-btn" onclick="copyToClipboard('${promptId}')">📋 Copy</button>`;
+            ta.value = "";
+            ta.style.height = 'auto';
+          } else {
+            loadingEl.innerHTML = `⚠️ Error tuning prompt.`;
+          }
+          chatBox.scrollTop = chatBox.scrollHeight;
+        })
+        .catch(err => {
+          document.getElementById(loadingId).innerHTML = `⚠️ Error: ${err}`;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        });
+      };
+
+      window.generateImage = function () {
+        const prompt = ta.value.trim();
+        if (!prompt) return;
+
+        document.body.classList.add("active-chat");
+        document.getElementById("welcome").style.display = "none";
+
+        chatBox.innerHTML += `<div class="msg user">🧑‍💻 ${prompt}</div>`;
+        ta.value = "";
+        ta.style.height = 'auto';
+
+        const loadingId = `loading-${Date.now()}`;
+        chatBox.innerHTML += `<div class="msg bot" id="${loadingId}">🎨 Generating image...</div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        fetch("/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: prompt })
+        })
+        .then(res => res.json())
+        .then(data => {
+          const loadingEl = document.getElementById(loadingId);
+          if (data.image_url) {
+            loadingEl.innerHTML = `<img src="${data.image_url}" alt="Generated Image" style="max-width:100%; border-radius:8px;">`;
+          } else {
+            loadingEl.innerHTML = `⚠️ Error generating image.`;
+          }
+          chatBox.scrollTop = chatBox.scrollHeight;
+        })
+        .catch(err => {
+          document.getElementById(loadingId).innerHTML = `⚠️ Error: ${err}`;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        });
+      };
+
+      window.copyToClipboard = function (id) {
+        const text = document.getElementById(id).innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          alert("Prompt copied to clipboard!");
+        });
+      };
+    });
+  </script>
+</body>
+</html>
