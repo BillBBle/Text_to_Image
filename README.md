@@ -1,4 +1,5 @@
 ### 1. Get an API from Stability AI
+https://platform.stability.ai/account/keys
 
 ### 2. Replace the API key
 
