@@ -52,19 +52,19 @@ body::before {
   right: 0;
   bottom: 0;
   background: url("/static/images/omi_live_background.jpeg") center/cover no-repeat;
-  opacity: 0.4;
+  opacity: 0.3;
   z-index: -1;
 }
 
 /* ---------- CHAT CONTAINER ---------- */
 .chat-shell {
-  background-color: rgba(255, 255, 255, 0.85);
+  background-color: rgba(255, 255, 255, 0.92);
   border-radius: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   width: calc(100% - 40px);
-  max-width: 900px;
+  max-width: 960px;
   height: calc(100vh - 2cm);
-  min-height: 500px;
+  min-height: 520px;
   display: flex;
   flex-direction: column;
   padding: 20px;
@@ -89,12 +89,21 @@ body:not(.active-chat) .input-bar {
   max-width: 600px;
 }
 
+/* 默认首页：未进入对话时隐藏 chat-box */
 body:not(.active-chat) .chat-box {
   display: none;
 }
 
 body.active-chat .chat-shell {
   justify-content: space-between;
+}
+
+/* 预览页：强制显示并居中 chat-box */
+body.preview .chat-box {
+  display: flex !important;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
 }
 
 .chat-box {
@@ -130,57 +139,168 @@ body.active-chat .chat-shell {
   border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
+/* 预览页把 bot 消息做成卡片并居中 */
+body.preview .msg.bot {
+  align-self: center;
+  width: min(860px, 92vw);
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid #eef2f7;
+  box-shadow: 0 6px 22px rgba(16, 24, 40, 0.08);
+  border-radius: 16px;
+  padding: clamp(16px, 3vw, 28px);
+}
+
+/* 预览图片效果 */
+#preview-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  margin: 12px auto 6px auto;
+}
+
+/* 工具栏：让三个按钮一排居中 */
+body.preview .msg.bot .resize-btn,
+body.preview .msg.bot .reshape-btn,
+body.preview .msg.bot .copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #1f2937;
+  margin-top: 14px;
+  margin-right: 10px;
+  transition: all .15s ease;
+}
+
+body.preview .msg.bot .resize-btn:hover,
+body.preview .msg.bot .reshape-btn:hover,
+body.preview .msg.bot .copy-btn:hover {
+  background: #e0e7ff;
+  transform: translateY(-1px);
+}
+
+body.preview .msg.bot .resize-btn:active,
+body.preview .msg.bot .reshape-btn:active,
+body.preview .msg.bot .copy-btn:active {
+  transform: translateY(0);
+}
+
 /* ---------- INPUT BAR ---------- */
 .input-bar {
   background: #e5e7eb;
   border-radius: 12px;
-  padding: 8px;
+  padding: 12px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
   margin-top: 10px;
 }
 
 textarea {
-  flex: 1;
   resize: none;
   border: none;
-  background: transparent;
-  padding: 10px 12px;
+  background: white;
+  padding: 12px;
   font-size: 1rem;
   outline: none;
-  max-height: 200px;
+  border-radius: 8px;
   line-height: 1.5;
+  width: 100%;
+  min-height: 48px;
+}
+
+/* ---------- OPTIONS LAYOUT ---------- */
+.option-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.option-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.option-group label {
+  font-size: 0.95rem;
+  color: #333;
+}
+
+.option-group select,
+.option-group input[type="number"],
+.option-group button {
+  padding: 8px 12px;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: white;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.option-group select:focus,
+.option-group input[type="number"]:focus,
+.option-group button:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  outline: none;
+}
+
+.option-group button {
+  background-color: #4f46e5;
+  color: white;
+  cursor: pointer;
+}
+
+.option-group button:hover {
+  background-color: #3730a3;
 }
 
 /* ---------- ACTION BUTTONS ---------- */
 .action-buttons {
   display: flex;
   justify-content: center;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 16px;
+  margin-top: 14px;
 }
 
-.action-buttons button {
+.action-buttons button,
+.tune-btn,
+.generate-btn {
   background: #4f46e5;
   color: white;
   border: none;
-  padding: 10px 16px;
+  padding: 12px 20px;
   font-size: 1rem;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.action-buttons button:hover {
+.tune-btn:hover,
+.generate-btn:hover {
   background: #3730a3;
   transform: scale(1.05);
 }
 
-.action-buttons button:active {
+.tune-btn:active,
+.generate-btn:active {
   transform: scale(0.97);
 }
 
-/* ---------- COPY BUTTON ---------- */
+/* ---------- COPY BUTTON（在非预览页仍保留原样式） ---------- */
 .copy-btn {
   margin-left: 10px;
   background: #e0e7ff;
@@ -195,4 +315,151 @@ textarea {
 
 .copy-btn:hover {
   background: #c7d2fe;
+}
+
+/* ---------- RESIZE & RESHAPE（基础样式，预览页会覆盖为统一按钮风格） ---------- */
+.resize-btn, .reshape-btn {
+  background-color: #ffffff;
+  border: 1px solid #aaa;
+  color: #333;
+  padding: 6px 12px;
+  margin-top: 8px;
+  margin-right: 8px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.resize-btn:hover, .reshape-btn:hover {
+  background-color: #f0f0f0;
+  border-color: #666;
+}
+
+.resize-btn {
+  background-color: #e3f2fd;
+  border-color: #90caf9;
+}
+
+.reshape-btn {
+  background-color: #ede7f6;
+  border-color: #b39ddb;
+}
+
+.resize-btn:hover {
+  background-color: #bbdefb;
+}
+
+.reshape-btn:hover {
+  background-color: #d1c4e9;
+}
+
+/* ---------- SELECT ---------- */
+.shape-select {
+  padding: 6px 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  margin-top: 8px;
+  margin-right: 8px;
+  outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.shape-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,.2);
+}
+/* 让预览页的容器始终在页面正中 */
+body.preview .chat-shell {
+  justify-content: center;   /* 垂直居中 */
+  align-items: center;       /* 水平居中 */
+}
+
+/* 预览页的 chat-box 居中承载内容 */
+body.preview .chat-box {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  width: 100%;
+}
+
+/* 卡片：让 bot 气泡变为居中卡片 */
+body.preview .msg.bot {
+  align-self: center;
+  width: min(820px, 92vw);
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid #eef2f7;
+  box-shadow: 0 6px 22px rgba(16,24,40,.08);
+  border-radius: 16px;
+  padding: clamp(16px, 3vw, 28px);
+}
+
+/* 图片样式（保持自适应 + 阴影 + 圆角） */
+#preview-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  margin: 14px auto 6px auto;
+}
+
+/* 工具栏：按钮行居中、可换行 */
+.tool-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* 统一三个按钮的风格（紫色主题） */
+body.preview .msg.bot .resize-btn,
+body.preview .msg.bot .reshape-btn,
+body.preview .msg.bot .copy-btn {
+  appearance: none;
+  border: none;
+  background: #4f46e5;       /* 主色 */
+  color: #fff;
+  padding: 10px 16px;
+  min-width: 124px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow: 0 2px 10px rgba(79,70,229,.18);
+}
+
+body.preview .msg.bot .resize-btn:hover,
+body.preview .msg.bot .reshape-btn:hover,
+body.preview .msg.bot .copy-btn:hover {
+  background: #4338ca;       /* hover 更深 */
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(79,70,229,.22);
+}
+
+body.preview .msg.bot .resize-btn:active,
+body.preview .msg.bot .reshape-btn:active,
+body.preview .msg.bot .copy-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(79,70,229,.18);
+}
+
+/* 移动端适配 */
+@media (max-width: 520px) {
+  body.preview .msg.bot { padding: 14px; }
+  .tool-row { gap: 10px; }
+  body.preview .msg.bot .resize-btn,
+  body.preview .msg.bot .reshape-btn,
+  body.preview .msg.bot .copy-btn {
+    min-width: 110px;
+    padding: 9px 14px;
+    font-size: 13.5px;
+  }
 }

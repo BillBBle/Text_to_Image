@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Your Sticker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
+</head>
+<body>
+  <header class="chat-header">
+    <div class="header-left">Sticker Generator — Upload</div>
+  </header>
+
+  <main class="chat-shell" id="chat-shell">
+    <h1 class="welcome" id="welcome">Upload an image to create your sticker</h1>
+    <div id="chat-box" class="chat-box"></div>
+
+    <div class="input-bar" id="input-bar">
+      <div id="dropzone" style="width:100%; min-height:140px; background:#fff; border:2px dashed #cbd5e1; border-radius:12px; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px;">
+        <div>
+          <p style="margin-bottom:8px; color:#555;">Drag & drop your image here (PNG/JPG/WebP/GIF, &lt; 10MB)</p>
+          <input id="file-input" type="file" accept="image/*" style="display:none;">
+          <button class="generate-btn" id="choose-btn">Choose a file</button>
+          <div id="file-info" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <a class="tune-btn" href="/">← Back</a>
+      <button class="generate-btn" id="upload-btn">📦 Upload & Preview</button>
+    </div>
+  </main>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const chatBox = document.getElementById("chat-box");
+  const fileInput = document.getElementById("file-input");
+  const chooseBtn = document.getElementById("choose-btn");
+  const uploadBtn = document.getElementById("upload-btn");
+  const dropzone = document.getElementById("dropzone");
+  const fileInfo = document.getElementById("file-info");
+
+  let selectedFile = null;
+
+  chooseBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", (e) => {
+    selectedFile = e.target.files[0] || null;
+    updateFileDisplay();
+  });
+
+  ["dragenter", "dragover"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = "#6366f1";
+    })
+  );
+  ["dragleave", "drop"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = "#cbd5e1";
+    })
+  );
+
+  dropzone.addEventListener("drop", (e) => {
+    selectedFile = e.dataTransfer.files?.[0] || null;
+    const dt = new DataTransfer();
+    dt.items.add(selectedFile);
+    fileInput.files = dt.files;
+    updateFileDisplay();
+  });
+
+  function updateFileDisplay() {
+    fileInfo.innerHTML = "";
+    chatBox.innerHTML = "";
+    if (selectedFile) {
+      const sizeKB = Math.round(selectedFile.size / 1024);
+      fileInfo.innerHTML = `
+        <p style="color:#333;">
+          Selected: ${selectedFile.name} (${sizeKB} KB)
+          <button style="margin-left:10px;" onclick="removeSelectedFile()">❌ Remove</button>
+        </p>`;
+    }
+  }
+
+  window.removeSelectedFile = function () {
+    selectedFile = null;
+    fileInput.value = "";
+    fileInfo.innerHTML = "";
+    showBot("🗑️ File removed.");
+  };
+
+  uploadBtn.addEventListener("click", () => {
+    if (!selectedFile) {
+      showBot("⚠️ Please select a file first.");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", selectedFile);
+    setBusy(uploadBtn, true, "Uploading...");
+
+    fetch("/upload-image", {
+      method: "POST",
+      body: form,
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;  // ⬅️ 新增支持跳转
+        } 
+        else if (data.image_url) {
+        const imageId = `img-${Date.now()}`;
+        const html = `
+          <div class="msg bot">
+            ✅ Uploaded!<br/>
+            <img src="${data.image_url}" id="${imageId}" alt="Uploaded" style="max-width:100%; border-radius:8px; margin-top:8px;">
+            <br/>
+            <button class="resize-btn" onclick="resizeImage('${data.image_url}', '${imageId}')">🔧 Resize</button>
+            <button class="reshape-btn" onclick="reshapeImage('${data.image_url}', '${imageId}')">🔲 Reshape</button>
+            <button class="copy-btn" onclick="downloadImage('${data.image_url}')">⬇️ Download</button>
+          </div>`;
+        chatBox.innerHTML = html;
+        chatBox.scrollTop = chatBox.scrollHeight;
+      } else {
+        showBot("⚠️ Upload failed: " + (data.error || "Unknown error"));
+      }
+    })
+    .catch(err => showBot("⚠️ Error: " + err))
+    .finally(() => setBusy(uploadBtn, false));
+  });
+
+  function showBot(text) {
+    chatBox.insertAdjacentHTML("beforeend", `<div class="msg bot">${text}</div>`);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function setBusy(btn, busy, textBusy) {
+    btn.disabled = busy;
+    btn.dataset.text = btn.dataset.text || btn.textContent;
+    btn.textContent = busy ? textBusy : btn.dataset.text;
+  }
+
+  window.resizeImage = function (url, imageId) {
+    const width = prompt("Enter new width (px):", "512");
+    const height = prompt("Enter new height (px):", "512");
+    if (!width || !height) return;
+    fetch("/resize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: url, width: parseInt(width), height: parseInt(height) })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.resized_url) {
+        document.getElementById(imageId).src = data.resized_url + "?t=" + Date.now();
+      } else {
+        showBot("Resize failed.");
+      }
+    })
+    .catch(err => showBot("Error: " + err));
+  };
+
+  window.reshapeImage = function (url, imageId) {
+    const shape = prompt("Enter shape (circle, rounded, square):", "circle");
+    if (!shape) return;
+    const finalShape = shape.toLowerCase();
+    if (!["circle", "rounded", "square"].includes(finalShape)) {
+      showBot("Invalid shape!");
+      return;
+    }
+    fetch("/reshape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: url, shape: finalShape })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.reshaped_url) {
+        document.getElementById(imageId).src = data.reshaped_url + "?t=" + Date.now();
+      } else {
+        showBot("Reshape failed.");
+      }
+    })
+    .catch(err => showBot("Error: " + err));
+  };
+
+  window.downloadImage = function (url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sticker.png';
+    a.click();
+  };
+});
+</script>
+</body>
+</html>
+

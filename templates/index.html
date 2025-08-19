@@ -4,30 +4,81 @@
   <meta charset="UTF-8" />
   <title>AI Text-to-Design</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
 </head>
 <body>
-
   <!-- Header -->
   <header class="chat-header">
-    <div class="header-left">AI Text-to-Design</div>
+    <div class="header-left">Sticker Generator</div>
   </header>
 
   <!-- Main Container -->
   <main class="chat-shell" id="chat-shell">
     <h1 class="welcome" id="welcome">Enter your prompt below</h1>
-
     <div id="chat-box" class="chat-box"></div>
 
-    <!-- Unified Prompt Input -->
+    <!-- Prompt Input -->
     <div class="input-bar" id="input-bar">
-      <textarea id="user-input" rows="1" placeholder="Enter your prompt here..."></textarea>
+      <textarea id="user-input" rows="2" placeholder="e.g. A cute cat flying in the sky with balloons..."></textarea>
+
+      <p style="font-size: 0.9rem; color: #555; margin-top: 6px;">
+        💡 <strong>Tune Prompt</strong> uses the options below to help rewrite your input. These options do <u>not</u> affect image generation.
+      </p>
+
+      <!-- Collapsible Advanced Options -->
+      <details style="margin-top: 10px;">
+        <summary style="cursor: pointer; font-weight: 500; font-size: 0.95rem; color: #444;">🎛️ Show Tuning Options</summary>
+        <div class="option-bar">
+          <div class="option-group">
+            <label>Style:
+              <select id="style">
+                <option value="cartoon">Cartoon</option>
+                <option value="realistic">Realistic</option>
+                <option value="anime">Anime</option>
+                <option value="pixel">Pixel Art</option>
+              </select>
+            </label>
+
+            <label>Emotion:
+              <select id="emotion">
+                <option value="happy">Happy</option>
+                <option value="sad">Sad</option>
+                <option value="angry">Angry</option>
+                <option value="surprised">Surprised</option>
+              </select>
+            </label>
+
+            <label>Background:
+              <select id="background">
+                <option value="forest">Forest</option>
+                <option value="space">Space</option>
+                <option value="city">City</option>
+                <option value="transparent">Transparent</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <!-- Size Controls -->
+      <div class="option-group" style="margin-top: 12px;">
+        <label>Width:
+          <input type="number" id="img-width" min="128" max="2048" step="64" value="512" style="width: 80px;">
+        </label>
+
+        <label>Height:
+          <input type="number" id="img-height" min="128" max="2048" step="64" value="512" style="width: 80px;">
+        </label>
+      </div>
     </div>
 
     <!-- Action Buttons -->
     <div class="action-buttons">
-      <button onclick="tunePrompt()">Tune Prompt</button>
-      <button onclick="generateImage()">Generate Image</button>
+      <button class="tune-btn" onclick="tunePrompt()">🎯 Tune Prompt</button>
+      <button class="generate-btn" onclick="generateImage()">🎨 Generate Image</button>
+      <a class="generate-btn" href="/upload" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
+        ⬆️ Upload Your Image
+      </a>
     </div>
   </main>
 
@@ -46,6 +97,10 @@
         const idea = ta.value.trim();
         if (!idea) return;
 
+        const style = document.getElementById("style").value;
+        const emotion = document.getElementById("emotion").value;
+        const background = document.getElementById("background").value;
+
         document.body.classList.add("active-chat");
         document.getElementById("welcome").style.display = "none";
 
@@ -54,11 +109,16 @@
         const loadingId = `loading-${Date.now()}`;
         chatBox.innerHTML += `<div class="msg bot" id="${loadingId}">⏳ Tuning prompt...</div>`;
         chatBox.scrollTop = chatBox.scrollHeight;
-
+        
         fetch("/generate-prompt", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idea: idea })
+          body: JSON.stringify({
+            idea: idea,
+            style: style,
+            emotion: emotion,
+            background: background
+          })
         })
         .then(res => res.json())
         .then(data => {
@@ -67,7 +127,8 @@
             const promptId = `prompt-${Date.now()}`;
             loadingEl.innerHTML = `
               ✨ Refined Prompt: <span id="${promptId}">${data.prompt}</span>
-              <button class="copy-btn" onclick="copyToClipboard('${promptId}')">📋 Copy</button>`;
+              <button class="copy-btn" onclick="copyToClipboard('${promptId}')">📋 Copy</button>
+            `;
             ta.value = "";
             ta.style.height = 'auto';
           } else {
@@ -81,8 +142,61 @@
         });
       };
 
+      window.resizeImage = function (url, imageId) {
+        const width = prompt("Enter new width (px):", "512");
+        const height = prompt("Enter new height (px):", "512");
+
+        if (!width || !height) return;
+
+        fetch("/resize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: url,
+            width: parseInt(width),
+            height: parseInt(height)
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.resized_url) {
+            document.getElementById(imageId).src = data.resized_url + "?t=" + Date.now();
+          } else {
+            alert("Resize failed.");
+          }
+        })
+        .catch(err => alert("Error: " + err));
+      };
+
+      window.reshapeImageWithSelect = function (imageUrl, imageId) {
+        const sel = document.getElementById(`shape-${imageId}`);
+        if (!sel) return;
+        const shape = sel.value;
+
+        const urlPath = imageUrl.startsWith("/") ? imageUrl : "/" + imageUrl;
+
+        fetch("/reshape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_url: urlPath, shape })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.reshaped_url) {
+            document.getElementById(imageId).src = data.reshaped_url + "?t=" + Date.now();
+          } else {
+            alert("Reshape failed.");
+          }
+        })
+        .catch(err => alert("Error: " + err));
+      };
+
+
       window.generateImage = function () {
         const prompt = ta.value.trim();
+        const width = parseInt(document.getElementById("img-width").value);
+        const height = parseInt(document.getElementById("img-height").value);
+
         if (!prompt) return;
 
         document.body.classList.add("active-chat");
@@ -99,13 +213,29 @@
         fetch("/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: prompt })
+          body: JSON.stringify({
+            prompt: prompt,
+            width: width,
+            height: height
+          })
         })
         .then(res => res.json())
         .then(data => {
           const loadingEl = document.getElementById(loadingId);
           if (data.image_url) {
-            loadingEl.innerHTML = `<img src="${data.image_url}" alt="Generated Image" style="max-width:100%; border-radius:8px;">`;
+            const imageId = `img-${Date.now()}`;
+            loadingEl.innerHTML = `
+              <img src="${data.image_url}" id="${imageId}" alt="Generated Image" 
+              style="max-width:100%; max-height:400px; border-radius:8px; object-fit:contain;">
+              <br/>
+              <button class="resize-btn" onclick="resizeImage('${data.image_url}', '${imageId}')">🔧 Resize</button>
+              <select id="shape-${imageId}" class="shape-select" aria-label="Sticker shape">
+                <option value="circle">Circle</option>
+                <option value="rounded">Rounded</option>
+                <option value="square">Square</option>
+              </select>
+              <button class="reshape-btn" onclick="reshapeImageWithSelect('${data.image_url}', '${imageId}')">🔲 Apply Shape</button>
+            `;
           } else {
             loadingEl.innerHTML = `⚠️ Error generating image.`;
           }
@@ -127,3 +257,4 @@
   </script>
 </body>
 </html>
+

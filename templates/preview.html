@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Preview Sticker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5" />
+</head>
+<body class="preview active-chat">
+  <header class="chat-header">
+    <div class="header-left">Sticker Generator — Preview</div>
+  </header>
+
+  <main class="chat-shell" id="chat-shell">
+    <h1 class="welcome">Preview Your Sticker</h1>
+  
+    <!-- chat-box 作为整体容器，里面放一个卡片 -->
+    <div id="chat-box" class="chat-box">
+      <div class="preview-card">
+        <div class="preview-title">🖼️ Your Uploaded Image</div>
+  
+        <div class="image-frame">
+          <img id="preview-img"
+               class="preview-image"
+               src="{{ url_for('serve_upload', filename=filename) }}"
+               alt="Uploaded image">
+        </div>
+  
+        <div class="preview-toolbar">
+            <div class="tool-row">
+                <button class="resize-btn"  onclick="resizeImage()">🔧 Resize</button>
+                <button class="reshape-btn" onclick="reshapeImage()">🔲 Reshape</button>
+                <button class="copy-btn"    onclick="downloadImage()">⬇️ Download</button>
+              </div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="action-buttons">
+      <a class="tune-btn" href="/upload">← Back</a>
+      <a class="generate-btn" href="/">✅ Confirm</a>
+    </div>
+  </main>
+
+<script>
+const imgUrl = document.getElementById("preview-img").src;
+
+function resizeImage() {
+  const width = prompt("New width?", "512");
+  const height = prompt("New height?", "512");
+  if (!width || !height) return;
+
+  fetch("/resize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_url: imgUrl.replace(location.origin + "/", ""), width: parseInt(width), height: parseInt(height) })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.resized_url) {
+      document.getElementById("preview-img").src = data.resized_url + "?t=" + Date.now();
+    } else {
+      alert("Resize failed");
+    }
+  });
+}
+
+function reshapeImage() {
+  const shape = prompt("Shape? (circle, rounded, square)", "circle");
+  if (!shape) return;
+
+  fetch("/reshape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_url: imgUrl.replace(location.origin + "/", ""), shape: shape })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.reshaped_url) {
+      document.getElementById("preview-img").src = data.reshaped_url + "?t=" + Date.now();
+    } else {
+      alert("Reshape failed");
+    }
+  });
+}
+
+function downloadImage() {
+  const a = document.createElement('a');
+  a.href = document.getElementById("preview-img").src;
+  a.download = "sticker.png";
+  a.click();
+}
+</script>
+</body>
+</html>
