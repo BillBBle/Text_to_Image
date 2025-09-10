@@ -4,26 +4,32 @@
   <meta charset="UTF-8" />
   <title>Sticker Generator — Upload</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+  <!-- 如果你有全局样式，可留；没有可删 -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+
   <style>
+    :root { --black:#111; --gray:#e5e7eb; --text:#333; --brand:#111; }
     body { background:#f6f7f9; font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; }
-    .chat-header{ position: sticky; top:0; z-index:10; background:#111; color:#fff; padding:12px 16px; }
+    .chat-header{ position: sticky; top:0; z-index:10; background:var(--black); color:#fff; padding:12px 16px; }
     .chat-shell{ max-width:980px; margin:24px auto; padding:0 16px; }
-    .chat-box .msg{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; margin:10px 0; }
-    .generate-btn,.tune-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid #111; background:#111; color:#fff; cursor:pointer; }
-    .tune-btn{ background:#fff; color:#111 }
+    .chat-box .msg{ background:#fff; border:1px solid var(--gray); border-radius:12px; padding:14px; margin:10px 0; }
+    .generate-btn,.tune-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--brand); background:var(--brand); color:#fff; cursor:pointer; }
+    .tune-btn{ background:#fff; color:var(--brand) }
     .action-buttons{ display:flex; gap:10px; margin-top:14px }
     .mini-btn{ height:34px; padding:0 10px; border-radius:8px; border:1px solid #D0D4DA; background:#fff; cursor:pointer }
+    #dropzone{ width:100%; min-height:140px; background:#fff; border:2px dashed #cbd5e1; border-radius:12px; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px; transition: border-color .2s ease; }
   </style>
 </head>
+
 <body>
   <header class="chat-header"><div>Sticker Generator — Upload (iframe)</div></header>
 
   <main class="chat-shell">
     <h1 style="font-size:20px;font-weight:700;">Upload an image to create your sticker</h1>
+
     <div id="chat-box" class="chat-box"></div>
 
-    <div id="dropzone" style="width:100%; min-height:140px; background:#fff; border:2px dashed #cbd5e1; border-radius:12px; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px;">
+    <div id="dropzone">
       <div>
         <p style="margin-bottom:8px; color:#555;">Drag & drop your image here (PNG/JPG/WebP/GIF, &lt; 10MB)</p>
         <input id="file-input" type="file" accept="image/*" style="display:none;">
@@ -40,7 +46,10 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('[Iframe] loaded');
+  // ======= 你需要替换的两项 =======
+  const SHOP_DOMAIN = 'https://getsiplit.com';     // ← 改成你的店铺域名（含 https）
+  const VARIANT_ID  = '50339879977245';            // ← 改成你的变体 ID（数字字符串均可）
+  // =================================
 
   const chatBox  = document.getElementById('chat-box');
   const fileIn   = document.getElementById('file-input');
@@ -49,18 +58,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropzone = document.getElementById('dropzone');
   const fileInfo = document.getElementById('file-info');
 
-  let selectedFile   = null;
-  let currentImageUrl= '';
-  let currentWidth   = 0;
-  let currentHeight  = 0;
-  let currentShape   = '';
-  let currentNotes   = '';
+  // 当前成品信息（Confirm 用）
+  let selectedFile    = null;
+  let currentImageUrl = '';
+  let currentWidth    = 0;
+  let currentHeight   = 0;
+  let currentShape    = '';
+  let currentNotes    = '';
 
+  // 选择/拖拽
   choose.addEventListener('click', () => fileIn.click());
   fileIn.addEventListener('change', e => { selectedFile = e.target.files?.[0] || null; renderFileInfo(); });
 
-  ['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#6366f1'; }));
-  ['dragleave','drop'   ].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#cbd5e1'; }));
+  ['dragenter','dragover'].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#6366f1'; })
+  );
+  ['dragleave','drop'   ].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#cbd5e1'; })
+  );
   dropzone.addEventListener('drop', e => { selectedFile = e.dataTransfer.files?.[0] || null; renderFileInfo(); });
 
   function renderFileInfo(){
@@ -68,104 +83,143 @@ document.addEventListener('DOMContentLoaded', () => {
     chatBox.innerHTML  = '';
     if(!selectedFile) return;
     const sizeKB = Math.round(selectedFile.size/1024);
-    fileInfo.innerHTML = `Selected: ${selectedFile.name} (${sizeKB} KB)
-      <button class="mini-btn" style="margin-left:10px" onclick="window.__removeFile()">❌ Remove</button>`;
+    fileInfo.innerHTML = `
+      Selected: ${selectedFile.name} (${sizeKB} KB)
+      <button class="mini-btn" data-remove>❌ Remove</button>`;
   }
-  window.__removeFile = () => { selectedFile=null; fileIn.value=''; fileInfo.innerHTML=''; appendMsg('🗑️ File removed.'); };
 
-  upload.addEventListener('click', async () => {
-    if(!selectedFile){ appendMsg('⚠️ Please select a file first.'); return; }
-    setBusy(upload,true,'Uploading...');
-    try{
-      const form = new FormData(); form.append('file', selectedFile);
-      const res  = await fetch('/upload-image',{ method:'POST', body:form });
-      const data = await res.json();
-      console.log('[Iframe] /upload-image =>', data);
+  // 统一事件委托（避免内联 onclick 被主题或重渲染清空）
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
 
-      if(data.redirect_url){ window.location.href = data.redirect_url; return; }
-      if(!data.image_url){ appendMsg('⚠️ Upload failed: ' + (data.error || 'Unknown error')); return; }
+    // 删除所选文件
+    if (btn.matches('[data-remove]')) {
+      selectedFile = null; fileIn.value = '';
+      fileInfo.innerHTML = '';
+      appendMsg('🗑️ File removed.');
+      return;
+    }
 
-      currentImageUrl = data.image_url;
-      currentWidth = 0; currentHeight = 0; currentShape = ''; currentNotes = '';
+    // 上传文件并展示预览按钮组
+    if (btn === upload) {
+      if (!selectedFile) { appendMsg('⚠️ Please select a file first.'); return; }
+      setBusy(upload, true, 'Uploading...');
+      try {
+        const form = new FormData(); form.append('file', selectedFile);
+        const res  = await fetch('/upload-image', { method:'POST', body:form });
+        const data = await res.json();
 
-      const id = 'img-' + Date.now();
-      chatBox.innerHTML = `
-        <div class="msg">
-          ✅ Uploaded!<br>
-          <img id="${id}" src="${data.image_url}" style="max-width:100%; border-radius:12px; margin:8px 0;">
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="mini-btn" onclick="window.__resize('${data.image_url}','${id}')">🔧 Resize</button>
-            <button class="mini-btn" onclick="window.__reshape('${data.image_url}','${id}')">🔲 Reshape</button>
-            <button class="mini-btn" onclick="window.__download('${data.image_url}')">⬇️ Download</button>
-            <button class="generate-btn" onclick="window.__confirm()">✅ Confirm</button>
-          </div>
-        </div>`;
-    }catch(e){ appendMsg('⚠️ Error: '+e); }
-    finally{ setBusy(upload,false); }
+        if (data.redirect_url) { window.location.href = data.redirect_url; return; }
+        if (!data.image_url)  { appendMsg('⚠️ Upload failed: ' + (data.error || 'Unknown error')); return; }
+
+        // 记录当前图
+        currentImageUrl = data.image_url;
+        currentWidth = 0; currentHeight = 0; currentShape = ''; currentNotes = '';
+
+        const imgId = 'img-' + Date.now();
+        chatBox.innerHTML = `
+          <div class="msg">
+            ✅ Uploaded!<br/>
+            <img id="${imgId}" src="${data.image_url}" style="max-width:100%; border-radius:12px; margin:8px 0;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="mini-btn" data-resize data-img="${imgId}" data-url="${data.image_url}">🔧 Resize</button>
+              <button class="mini-btn" data-reshape data-img="${imgId}" data-url="${data.image_url}">🔲 Reshape</button>
+              <button class="mini-btn" data-download data-url="${data.image_url}">⬇️ Download</button>
+              <button class="generate-btn" data-confirm>✅ Confirm</button>
+            </div>
+          </div>`;
+      } catch (err) {
+        appendMsg('⚠️ Error: ' + err);
+      } finally {
+        setBusy(upload, false);
+      }
+      return;
+    }
+
+    // Resize
+    if (btn.matches('[data-resize]')) {
+      const url   = btn.getAttribute('data-url');
+      const imgId = btn.getAttribute('data-img');
+      const w = prompt('Enter new width (px):',  '512');
+      const h = prompt('Enter new height (px):', '512');
+      if (!w || !h) return;
+
+      try {
+        const res  = await fetch('/resize', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ image_url:url, width:+w, height:+h })
+        });
+        const data = await res.json();
+        if (data.resized_url) {
+          currentImageUrl = data.resized_url;
+          currentWidth  = +w;
+          currentHeight = +h;
+          document.getElementById(imgId).src = data.resized_url + '?t=' + Date.now();
+        } else {
+          appendMsg('Resize failed.');
+        }
+      } catch (err) { appendMsg('Error: ' + err); }
+      return;
+    }
+
+    // Reshape
+    if (btn.matches('[data-reshape]')) {
+      const url   = btn.getAttribute('data-url');
+      const imgId = btn.getAttribute('data-img');
+      const s = (prompt('Enter shape (circle, rounded, square):', 'circle') || '').toLowerCase();
+      if (!['circle','rounded','square'].includes(s)) { appendMsg('Invalid shape!'); return; }
+
+      try {
+        const res  = await fetch('/reshape', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ image_url:url, shape:s })
+        });
+        const data = await res.json();
+        if (data.reshaped_url) {
+          currentImageUrl = data.reshaped_url;
+          currentShape = s;
+          document.getElementById(imgId).src = data.reshaped_url + '?t=' + Date.now();
+        } else {
+          appendMsg('Reshape failed.');
+        }
+      } catch (err) { appendMsg('Error: ' + err); }
+      return;
+    }
+
+    // Download
+    if (btn.matches('[data-download]')) {
+      const a = document.createElement('a');
+      a.href = btn.getAttribute('data-url') || currentImageUrl;
+      a.download = 'sticker.png';
+      a.click();
+      return;
+    }
+
+    // ✅ Confirm：使用 Cart Permalink 一键加车
+    if (btn.matches('[data-confirm]')) {
+      if (!currentImageUrl) { appendMsg('⚠️ No image yet.'); return; }
+
+      // 组装 properties（只传有值的，避免 Shopify 校验异常）
+      const params = new URLSearchParams();
+      params.set('properties[Design URL]', currentImageUrl);
+      if (currentWidth && currentHeight) params.set('properties[Size]',  `${currentWidth}x${currentHeight}px`);
+      if (currentShape)                  params.set('properties[Shape]', currentShape);
+      if (currentNotes)                  params.set('properties[Notes]', currentNotes);
+
+      // /cart/{variant_id}:1?properties...
+      const cartUrl = `${SHOP_DOMAIN}/cart/${encodeURIComponent(VARIANT_ID)}:1?${params.toString()}`;
+
+      // 在 iframe 中用 top 跳转最稳
+      window.top.location.href = cartUrl;
+
+      // 如需直接结账（跳过购物车），可在成功加车后再跳一次：
+      // setTimeout(() => { window.top.location.href = `${SHOP_DOMAIN}/checkout`; }, 600);
+      return;
+    }
   });
 
-  window.__resize = async (url, imgId) => {
-    const w = prompt('Enter new width (px):','512');
-    const h = prompt('Enter new height (px):','512');
-    if(!w || !h) return;
-    const res = await fetch('/resize', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image_url:url,width:+w,height:+h})
-    });
-    const data = await res.json();
-    console.log('[Iframe] /resize =>', data);
-    if(data.resized_url){
-      currentImageUrl = data.resized_url;
-      currentWidth = +w; currentHeight = +h;
-      document.getElementById(imgId).src = data.resized_url + '?t=' + Date.now();
-    }else{
-      appendMsg('Resize failed.');
-    }
-  };
-
-  window.__reshape = async (url, imgId) => {
-    const s = (prompt('Enter shape (circle, rounded, square):','circle') || '').toLowerCase();
-    if(!['circle','rounded','square'].includes(s)){ appendMsg('Invalid shape!'); return; }
-    const res = await fetch('/reshape', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image_url:url,shape:s})
-    });
-    const data = await res.json();
-    console.log('[Iframe] /reshape =>', data);
-    if(data.reshaped_url){
-      currentImageUrl = data.reshaped_url;
-      currentShape = s;
-      document.getElementById(imgId).src = data.reshaped_url + '?t=' + Date.now();
-    }else{
-      appendMsg('Reshape failed.');
-    }
-  };
-
-  window.__download = (url) => { const a=document.createElement('a'); a.href=url; a.download='sticker.png'; a.click(); };
-
-  // 只负责把数据发给父页；不做任何跳转
-  window.__confirm = () => {
-    if(!currentImageUrl){ appendMsg('⚠️ No image yet.'); return; }
-    const payload = {
-      type: 'STICKER_CONFIRM',
-      imageUrl: currentImageUrl,
-      width: currentWidth,
-      height: currentHeight,
-      shape: currentShape,
-      notes: currentNotes
-    };
-    console.log('[Iframe] postMessage =>', payload);
-    try {
-      window.top.postMessage(payload, '*');
-      appendMsg('✅ Sent to Shopify. Please wait…');
-    } catch (e) {
-      console.error('[Iframe] postMessage error:', e);
-      appendMsg('⚠️ Failed to notify Shopify.');
-    }
-  };
-
+  // 工具函数
   function appendMsg(t){ chatBox.insertAdjacentHTML('beforeend', `<div class="msg">${t}</div>`); chatBox.scrollTop = chatBox.scrollHeight; }
   function setBusy(btn,b,txt){ btn.disabled=b; btn.dataset.text=btn.dataset.text||btn.textContent; btn.textContent=b?(txt||'Working…'):btn.dataset.text; }
 });
