@@ -43,6 +43,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let selectedFile = null;
 
+  // 新增：记录当前成品信息，供 Confirm 用
+  let currentImageUrl = "";
+  let currentSize = "";     // 如 '3-inch'，你可在别处赋值
+  let currentShape = "";    // 'circle' | 'rounded' | 'square'
+  let currentWidth = 0;
+  let currentHeight = 0;
+
   chooseBtn.addEventListener("click", () => fileInput.click());
 
   fileInput.addEventListener("change", (e) => {
@@ -66,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
   dropzone.addEventListener("drop", (e) => {
     selectedFile = e.dataTransfer.files?.[0] || null;
     const dt = new DataTransfer();
-    dt.items.add(selectedFile);
+    if (selectedFile) dt.items.add(selectedFile);
     fileInput.files = dt.files;
     updateFileDisplay();
   });
@@ -107,10 +114,11 @@ document.addEventListener("DOMContentLoaded", () => {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.redirect_url) {
-            window.location.href = data.redirect_url;  // ⬅️ 新增支持跳转
-        } 
-        else if (data.image_url) {
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url;
+      } else if (data.image_url) {
+        // 记录当前图
+        currentImageUrl = data.image_url;
         const imageId = `img-${Date.now()}`;
         const html = `
           <div class="msg bot">
@@ -120,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <button class="resize-btn" onclick="resizeImage('${data.image_url}', '${imageId}')">🔧 Resize</button>
             <button class="reshape-btn" onclick="reshapeImage('${data.image_url}', '${imageId}')">🔲 Reshape</button>
             <button class="copy-btn" onclick="downloadImage('${data.image_url}')">⬇️ Download</button>
+            <button class="generate-btn" style="margin-left:8px;" onclick="confirmToShopify()">✅ Confirm</button>
           </div>`;
         chatBox.innerHTML = html;
         chatBox.scrollTop = chatBox.scrollHeight;
@@ -154,6 +163,9 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(res => res.json())
     .then(data => {
       if (data.resized_url) {
+        currentImageUrl = data.resized_url;  // 更新当前图
+        currentWidth = parseInt(width);
+        currentHeight = parseInt(height);
         document.getElementById(imageId).src = data.resized_url + "?t=" + Date.now();
       } else {
         showBot("Resize failed.");
@@ -178,6 +190,8 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(res => res.json())
     .then(data => {
       if (data.reshaped_url) {
+        currentImageUrl = data.reshaped_url; // 更新当前图
+        currentShape = finalShape;
         document.getElementById(imageId).src = data.reshaped_url + "?t=" + Date.now();
       } else {
         showBot("Reshape failed.");
@@ -192,8 +206,31 @@ document.addEventListener("DOMContentLoaded", () => {
     a.download = 'sticker.png';
     a.click();
   };
+
+  // ✅ 关键：把结果发给 Shopify 父页面
+  window.confirmToShopify = function () {
+    if (!currentImageUrl) {
+      showBot("⚠️ 还没有图片，请先上传或处理图片。");
+      return;
+    }
+    const payload = {
+      type: 'STICKER_CONFIRM',
+      imageUrl: currentImageUrl,
+      size: currentSize || (currentWidth && currentHeight ? `${currentWidth}x${currentHeight}px` : ''),
+      shape: currentShape || '',
+      notes: ''
+    };
+    const inIframe = (window.self !== window.top);
+    if (inIframe) {
+      // 上线建议把 * 改为你的店铺域名（见下方 Shopify 端代码中的 YOUR_SHOP_DOMAIN）
+      window.parent.postMessage(payload, '*');
+      showBot("✅ 已发送到商店页面，正在加入购物车…");
+    } else {
+      navigator.clipboard?.writeText(currentImageUrl);
+      showBot("ℹ️ 当前不在商店页面内嵌环境。已复制图片链接：<br>" + currentImageUrl);
+    }
+  };
 });
 </script>
 </body>
 </html>
-
