@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Sticker Generator — Upload</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- 如果你有全局样式，可留；没有可删 -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
 
   <style>
@@ -58,6 +57,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropzone = document.getElementById('dropzone');
   const fileInfo = document.getElementById('file-info');
 
+  // —— 小工具函数（原脚本里调用但未定义）——
+  function appendMsg(text) {
+    const box = document.createElement('div');
+    box.className = 'msg';
+    box.textContent = text;
+    chatBox.appendChild(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+  function setBusy(btn, busy, labelWhenBusy) {
+    if (!btn) return;
+    if (busy) {
+      btn.dataset._oldText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = labelWhenBusy || 'Working...';
+    } else {
+      btn.disabled = false;
+      if (btn.dataset._oldText) btn.textContent = btn.dataset._oldText;
+    }
+  }
+
   // 当前成品信息（Confirm 用）
   let selectedFile    = null;
   let currentImageUrl = '';
@@ -90,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 统一事件委托（避免内联 onclick 被主题或重渲染清空）
   document.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button');
+    const btn = e.target.closest && e.target.closest('button');
     if (!btn) return;
 
     // 删除所选文件
@@ -192,59 +211,64 @@ document.addEventListener('DOMContentLoaded', () => {
       const a = document.createElement('a');
       a.href = btn.getAttribute('data-url') || currentImageUrl;
       a.download = 'sticker.png';
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       return;
     }
 
     // ✅ Confirm：使用 /cart/add 一键加车，并打印详细日志
-if (btn.matches('[data-confirm]')) {
-  console.log('[Confirm] click');
+    if (btn.matches('[data-confirm]')) {
+      console.log('[Confirm] click');
 
-  if (!currentImageUrl) {
-    appendMsg('⚠️ No image yet.');
-    console.warn('[Confirm] blocked: currentImageUrl is empty');
-    return;
-  }
+      if (!currentImageUrl) {
+        appendMsg('⚠️ No image yet.');
+        console.warn('[Confirm] blocked: currentImageUrl is empty');
+        return;
+      }
 
-  // 组装 /cart/add 所需参数
-  const p = new URLSearchParams();
-  p.set('id', String(VARIANT_ID));            // 变体 ID
-  p.set('quantity', '1');                     // 数量
-  p.set('properties[Design URL]', currentImageUrl);
+      // 组装 /cart/add 所需参数
+      const p = new URLSearchParams();
+      p.set('id', String(VARIANT_ID));            // 变体 ID
+      p.set('quantity', '1');                     // 数量
+      p.set('properties[Design URL]', currentImageUrl);
 
-  if (currentWidth && currentHeight) p.set('properties[Size]', `${currentWidth}x${currentHeight}px`);
-  if (currentShape)                  p.set('properties[Shape]', currentShape);
-  if (currentNotes)                  p.set('properties[Notes]', currentNotes);
+      if (currentWidth && currentHeight) p.set('properties[Size]', `${currentWidth}x${currentHeight}px`);
+      if (currentShape)                  p.set('properties[Shape]', currentShape);
+      if (currentNotes)                  p.set('properties[Notes]', currentNotes);
 
-  // 返回购物车（也可改成 /products/sticker 或 /checkout）
-  p.set('return_to', '/cart');
+      // 返回购物车（也可改成 /products/sticker 或 /checkout）
+      p.set('return_to', '/cart');
 
-  const addUrl = `${SHOP_DOMAIN}/cart/add?${p.toString()}`;
-  console.log('[Confirm] params:', {
-    id: VARIANT_ID,
-    quantity: 1,
-    imageUrl: currentImageUrl,
-    width: currentWidth,
-    height: currentHeight,
-    shape: currentShape,
-    notes: currentNotes
-  });
-  console.log('[Confirm] addUrl =', addUrl);
+      const addUrl = `${SHOP_DOMAIN}/cart/add?${p.toString()}`;
+      console.log('[Confirm] params:', {
+        id: VARIANT_ID,
+        quantity: 1,
+        imageUrl: currentImageUrl,
+        width: currentWidth,
+        height: currentHeight,
+        shape: currentShape,
+        notes: currentNotes
+      });
+      console.log('[Confirm] addUrl =', addUrl);
 
-  // 顶层跳转最稳（在主题编辑器可能被外层 sandbox 拦，请在前台页面测试）
-  try {
-    window.top.location.href = addUrl;  // 或者用 replace：window.top.location.replace(addUrl)
-  } catch (err) {
-    console.error('[Confirm] top navigation failed, fallback to <a target=_top> click', err);
-    const a = document.createElement('a');
-    a.href = addUrl;
-    a.target = '_top';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-  return;
-}
+      // 顶层跳转最稳（在主题编辑器可能被外层 sandbox 拦，请在前台页面测试）
+      try {
+        window.top.location.href = addUrl;  // 或者用 replace：window.top.location.replace(addUrl)
+      } catch (err) {
+        console.error('[Confirm] top navigation failed, fallback to <a target=_top> click', err);
+        const a = document.createElement('a');
+        a.href = addUrl;
+        a.target = '_top';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      return;
+    }
+  });   // ← 关闭全局 click 事件委托
+});     // ← 关闭 DOMContentLoaded 外层包装
 </script>
 </body>
 </html>
+
