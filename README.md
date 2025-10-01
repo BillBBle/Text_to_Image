@@ -10,3 +10,4 @@ https://platform.stability.ai/account/keys
 ### 4. Run the code by passing the command
 python app.py
  
+google cloud test
