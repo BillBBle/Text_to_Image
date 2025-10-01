@@ -45,10 +45,10 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // ======= 你需要替换的两项 =======
-  const SHOP_DOMAIN = 'https://getsiplit.com';     // ← 改成你的店铺域名（含 https）
-  const VARIANT_ID  = '50339879977245';            // ← 改成你的变体 ID（数字字符串均可）
-  // =================================
+  // ======= 你的店铺配置（已替换为你提供的）=======
+  const SHOP_DOMAIN = 'https://www.getsiplit.com'; // ← 你的前台域名（含 https）
+  const VARIANT_ID  = '50339879977245';            // ← 你的变体 ID
+  // ===============================================
 
   const chatBox  = document.getElementById('chat-box');
   const fileIn   = document.getElementById('file-input');
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropzone = document.getElementById('dropzone');
   const fileInfo = document.getElementById('file-info');
 
-  // —— 小工具函数（原脚本里调用但未定义）——
+  // 小工具
   function appendMsg(text) {
     const box = document.createElement('div');
     box.className = 'msg';
@@ -107,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="mini-btn" data-remove>❌ Remove</button>`;
   }
 
-  // 统一事件委托（避免内联 onclick 被主题或重渲染清空）
+  // 统一事件委托
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest && e.target.closest('button');
     if (!btn) return;
@@ -217,58 +217,44 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ✅ Confirm：使用 /cart/add 一键加车，并打印详细日志
+    // ✅ Confirm：使用顶层 POST 到 /cart/add，确保能加车
     if (btn.matches('[data-confirm]')) {
-      console.log('[Confirm] click');
+      if (!currentImageUrl) { appendMsg('⚠️ No image yet.'); return; }
 
-      if (!currentImageUrl) {
-        appendMsg('⚠️ No image yet.');
-        console.warn('[Confirm] blocked: currentImageUrl is empty');
-        return;
-      }
+      // 构造隐藏表单
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `${SHOP_DOMAIN.replace(/\/$/,'')}/cart/add`; // 规范化域名
+      form.target = '_top';  // 跳出 iframe，确保 Shopify 能设置 cart cookie
+      form.style.display = 'none';
 
-      // 组装 /cart/add 所需参数
-      const p = new URLSearchParams();
-      p.set('id', String(VARIANT_ID));            // 变体 ID
-      p.set('quantity', '1');                     // 数量
-      p.set('properties[Design URL]', currentImageUrl);
+      const addField = (name, value) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = String(value);
+        form.appendChild(input);
+      };
 
-      if (currentWidth && currentHeight) p.set('properties[Size]', `${currentWidth}x${currentHeight}px`);
-      if (currentShape)                  p.set('properties[Shape]', currentShape);
-      if (currentNotes)                  p.set('properties[Notes]', currentNotes);
+      // 必填
+      addField('id', VARIANT_ID);
+      addField('quantity', '1');
 
-      // 返回购物车（也可改成 /products/sticker 或 /checkout）
-      p.set('return_to', '/cart');
+      // 自定义属性
+      addField('properties[Design URL]', currentImageUrl);
+      if (currentWidth && currentHeight) addField('properties[Size]', `${currentWidth}x${currentHeight}px`);
+      if (currentShape) addField('properties[Shape]', currentShape);
+      if (currentNotes) addField('properties[Notes]', currentNotes);
 
-      const addUrl = `${SHOP_DOMAIN}/cart/add?${p.toString()}`;
-      console.log('[Confirm] params:', {
-        id: VARIANT_ID,
-        quantity: 1,
-        imageUrl: currentImageUrl,
-        width: currentWidth,
-        height: currentHeight,
-        shape: currentShape,
-        notes: currentNotes
-      });
-      console.log('[Confirm] addUrl =', addUrl);
+      // 返回目的地
+      addField('return_to', '/cart'); // 也可改成 /checkout
 
-      // 顶层跳转最稳（在主题编辑器可能被外层 sandbox 拦，请在前台页面测试）
-      try {
-        window.top.location.href = addUrl;  // 或者用 replace：window.top.location.replace(addUrl)
-      } catch (err) {
-        console.error('[Confirm] top navigation failed, fallback to <a target=_top> click', err);
-        const a = document.createElement('a');
-        a.href = addUrl;
-        a.target = '_top';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
+      document.body.appendChild(form);
+      try { form.submit(); } finally { setTimeout(() => form.remove(), 1000); }
       return;
     }
-  });   // ← 关闭全局 click 事件委托
-});     // ← 关闭 DOMContentLoaded 外层包装
+  });   // 关闭全局 click
+});     // 关闭 DOMContentLoaded
 </script>
 </body>
 </html>
-
