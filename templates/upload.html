@@ -196,33 +196,55 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ✅ Confirm：使用 Cart Permalink 一键加车
-    if (btn.matches('[data-confirm]')) {
-      if (!currentImageUrl) { appendMsg('⚠️ No image yet.'); return; }
+    // ✅ Confirm：使用 /cart/add 一键加车，并打印详细日志
+if (btn.matches('[data-confirm]')) {
+  console.log('[Confirm] click');
 
-      // 组装 properties（只传有值的，避免 Shopify 校验异常）
-      const params = new URLSearchParams();
-      params.set('properties[Design URL]', currentImageUrl);
-      if (currentWidth && currentHeight) params.set('properties[Size]',  `${currentWidth}x${currentHeight}px`);
-      if (currentShape)                  params.set('properties[Shape]', currentShape);
-      if (currentNotes)                  params.set('properties[Notes]', currentNotes);
+  if (!currentImageUrl) {
+    appendMsg('⚠️ No image yet.');
+    console.warn('[Confirm] blocked: currentImageUrl is empty');
+    return;
+  }
 
-      // /cart/{variant_id}:1?properties...
-      const cartUrl = `${SHOP_DOMAIN}/cart/${encodeURIComponent(VARIANT_ID)}:1?${params.toString()}`;
+  // 组装 /cart/add 所需参数
+  const p = new URLSearchParams();
+  p.set('id', String(VARIANT_ID));            // 变体 ID
+  p.set('quantity', '1');                     // 数量
+  p.set('properties[Design URL]', currentImageUrl);
 
-      // 在 iframe 中用 top 跳转最稳
-      window.top.location.href = 'https://getsiplit.com/products/sticker';
+  if (currentWidth && currentHeight) p.set('properties[Size]', `${currentWidth}x${currentHeight}px`);
+  if (currentShape)                  p.set('properties[Shape]', currentShape);
+  if (currentNotes)                  p.set('properties[Notes]', currentNotes);
 
-      // 如需直接结账（跳过购物车），可在成功加车后再跳一次：
-      // setTimeout(() => { window.top.location.href = `${SHOP_DOMAIN}/checkout`; }, 600);
-      return;
-    }
+  // 返回购物车（也可改成 /products/sticker 或 /checkout）
+  p.set('return_to', '/cart');
+
+  const addUrl = `${SHOP_DOMAIN}/cart/add?${p.toString()}`;
+  console.log('[Confirm] params:', {
+    id: VARIANT_ID,
+    quantity: 1,
+    imageUrl: currentImageUrl,
+    width: currentWidth,
+    height: currentHeight,
+    shape: currentShape,
+    notes: currentNotes
   });
+  console.log('[Confirm] addUrl =', addUrl);
 
-  // 工具函数
-  function appendMsg(t){ chatBox.insertAdjacentHTML('beforeend', `<div class="msg">${t}</div>`); chatBox.scrollTop = chatBox.scrollHeight; }
-  function setBusy(btn,b,txt){ btn.disabled=b; btn.dataset.text=btn.dataset.text||btn.textContent; btn.textContent=b?(txt||'Working…'):btn.dataset.text; }
-});
+  // 顶层跳转最稳（在主题编辑器可能被外层 sandbox 拦，请在前台页面测试）
+  try {
+    window.top.location.href = addUrl;  // 或者用 replace：window.top.location.replace(addUrl)
+  } catch (err) {
+    console.error('[Confirm] top navigation failed, fallback to <a target=_top> click', err);
+    const a = document.createElement('a');
+    a.href = addUrl;
+    a.target = '_top';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  return;
+}
 </script>
 </body>
 </html>
