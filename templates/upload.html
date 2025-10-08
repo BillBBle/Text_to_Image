@@ -43,70 +43,12 @@
     </div>
   </main>
 
-  <div style="position:fixed;right:8px;bottom:8px;z-index:99999;background:#000;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;">
-    <button id="btn-hello" style="margin-right:8px;">HELLO</button>
-    <button id="btn-ping">PING</button>
-    <span id="debug-status" style="margin-left:8px;opacity:.8">idle</span>
-  </div>
-
 <script>
-(function(){
-  const $status = document.getElementById('debug-status');
-  const $hello  = document.getElementById('btn-hello');
-  const $ping   = document.getElementById('btn-ping');
-
-  // 计算父页 origin（若拿不到 referrer 就先用 * 做目标；等通了再收紧）
-  let PARENT_ORIGIN = '*';
-  try {
-    if (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {
-      // ✅ 直接拿到父页域（最可靠）
-      PARENT_ORIGIN = window.location.ancestorOrigins[0];
-    } else if (document.referrer) {
-      // 次优方案
-      PARENT_ORIGIN = new URL(document.referrer).origin;
-    }
-  } catch (err) {
-    console.warn('[Child][DEBUG] failed to parse parent origin', err);
-  }
-  console.log('[Child][DEBUG] resolved PARENT_ORIGIN =', PARENT_ORIGIN);
-
-  // 监听父页回执
-  window.addEventListener('message', (event) => {
-    console.log('[Child][DEBUG] message from', event.origin, 'data =', event.data);
-    const data = event.data || {};
-    if (data.type === 'PONG') {
-      setStatus('PONG ✅ (ts=' + data.ts + ')');
-    }
-    if (data.type === 'HELLO_FROM_PARENT') {
-      setStatus('HELLO_FROM_PARENT ✅');
-    }
-    // 你也可以在这里监听 STICKER_ADD_TO_CART_FAILED 等业务回执
-  });
-
-  // 测试 1：打招呼（父页回 HELLO_FROM_PARENT）
-  $hello.addEventListener('click', () => {
-    setStatus('send HELLO_FROM_CHILD → ' + PARENT_ORIGIN);
-    window.parent.postMessage({ type: 'HELLO_FROM_CHILD', ts: Date.now() }, PARENT_ORIGIN);
-  });
-
-  // 测试 2：PING（父页回 PONG）
-  $ping.addEventListener('click', () => {
-    setStatus('send PING → ' + PARENT_ORIGIN);
-    window.parent.postMessage({ type: 'PING', ts: Date.now() }, PARENT_ORIGIN);
-  });
-
-  // 页面加载后自动先打个招呼（可选）
-  window.addEventListener('load', () => {
-    setStatus('auto HELLO_FROM_CHILD → ' + PARENT_ORIGIN);
-    window.parent.postMessage({ type: 'HELLO_FROM_CHILD', ts: Date.now() }, PARENT_ORIGIN);
-  });
-})();
-
 document.addEventListener('DOMContentLoaded', () => {
-  // ======= 你的店铺配置（已替换为你提供的）=======
-  const SHOP_DOMAIN = 'https://www.getsiplit.com'; // ← 你的前台域名（含 https）
-  const VARIANT_ID  = '50339879977245';            // ← 你的变体 ID
-  // ===============================================
+  // ======= 店铺配置 =======
+  const SHOP_DOMAIN = 'https://www.getsiplit.com'; // 你的前台域名（含 https）
+  const VARIANT_ID  = '50339879977245';            // 可售变体 ID
+  // ========================
 
   const chatBox  = document.getElementById('chat-box');
   const fileIn   = document.getElementById('file-input');
@@ -190,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.redirect_url) { window.location.href = data.redirect_url; return; }
         if (!data.image_url)  { appendMsg('⚠️ Upload failed: ' + (data.error || 'Unknown error')); return; }
 
-        // 记录当前图
+        // 记录当前图（你后端已保存，我们只拿可访问直链）
         currentImageUrl = data.image_url;
         currentWidth = 0; currentHeight = 0; currentShape = ''; currentNotes = '';
 
@@ -275,15 +217,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ✅ Confirm：使用顶层 POST 到 /cart/add，确保能加车
+    // ✅ Confirm：顶层表单 POST 到 /cart/add（同域最稳），成功后由 Shopify 跳转到 /cart
     if (btn.matches('[data-confirm]')) {
       if (!currentImageUrl) { appendMsg('⚠️ No image yet.'); return; }
 
-      // 构造隐藏表单
+      // 构造隐藏表单（加入必备字段，兼容性更好）
       const form = document.createElement('form');
       form.method = 'POST';
-      form.action = `${SHOP_DOMAIN.replace(/\/$/,'')}/cart/add`; // 规范化域名
-      form.target = '_top';  // 跳出 iframe，确保 Shopify 能设置 cart cookie
+      form.action = `${SHOP_DOMAIN.replace(/\/$/,'')}/cart/add`;
+      form.target = '_top';  // 跳出 iframe
       form.style.display = 'none';
 
       const addField = (name, value) => {
@@ -295,10 +237,12 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // 必填
+      addField('form_type', 'product');
+      addField('utf8', '✓');
       addField('id', VARIANT_ID);
       addField('quantity', '1');
 
-      // 自定义属性
+      // 自定义属性（后台与购物车都会展示）
       addField('properties[Design URL]', currentImageUrl);
       if (currentWidth && currentHeight) addField('properties[Size]', `${currentWidth}x${currentHeight}px`);
       if (currentShape) addField('properties[Shape]', currentShape);
