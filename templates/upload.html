@@ -58,10 +58,17 @@
   // 计算父页 origin（若拿不到 referrer 就先用 * 做目标；等通了再收紧）
   let PARENT_ORIGIN = '*';
   try {
-    if (document.referrer) PARENT_ORIGIN = new URL(document.referrer).origin;
-  } catch {}
-
-  function setStatus(msg){ $status.textContent = msg; console.log('[Child][DEBUG]', msg); }
+    if (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {
+      // ✅ 直接拿到父页域（最可靠）
+      PARENT_ORIGIN = window.location.ancestorOrigins[0];
+    } else if (document.referrer) {
+      // 次优方案
+      PARENT_ORIGIN = new URL(document.referrer).origin;
+    }
+  } catch (err) {
+    console.warn('[Child][DEBUG] failed to parse parent origin', err);
+  }
+  console.log('[Child][DEBUG] resolved PARENT_ORIGIN =', PARENT_ORIGIN);
 
   // 监听父页回执
   window.addEventListener('message', (event) => {
