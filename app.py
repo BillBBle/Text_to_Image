@@ -2,19 +2,25 @@ import os
 from flask import Flask, request, jsonify, send_from_directory, render_template, url_for
 from dotenv import load_dotenv
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw
 import requests
 from werkzeug.utils import secure_filename
 import uuid
 
+# === 新增：Google GenAI SDK ===
+from google import genai
+from google.genai import types as genai_types
+
 # Load environment variables
 load_dotenv()
-api_key = os.getenv("STABILITY_API_KEY")
+
+# （Stability 的 key 不再需要）
+# api_key = os.getenv("STABILITY_API_KEY")
 
 app = Flask(__name__)
 os.makedirs("output", exist_ok=True)
 
-UPLOAD_DIR = os.path.join("static", "uploads")  # 修改上传目录为 static/uploads
+UPLOAD_DIR = os.path.join("static", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
@@ -55,6 +61,34 @@ def upload_image():
 def serve_upload(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
+# ======== 关键改造：/generate 使用 Google Imagen 3 ========
+# 映射：width/height -> (aspectRatio, imageSize)
+# Imagen 仅支持 aspectRatio: "1:1","3:4","4:3","9:16","16:9"
+# imageSize: "1K" 或 "2K"（标准/Ultra 模型支持）
+def pick_aspect_ratio(width: int, height: int) -> str:
+    # 计算最接近的支持比例
+    target = width / height if height else 1.0
+    ratios = {
+        "1:1": 1.0,
+        "3:4": 3/4,
+        "4:3": 4/3,
+        "9:16": 9/16,
+        "16:9": 16/9,
+    }
+    best = min(ratios.items(), key=lambda kv: abs(kv[1] - target))
+    return best[0]
+
+def pick_image_size(width: int, height: int) -> str:
+    # 简单规则：最长边 <= 1024 用 1K，否则 2K
+    longest = max(width, height)
+    return "1K" if longest <= 1024 else "2K"
+
+# 你可以在这里统一切换模型版本（Imagen 3 / 4）
+IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+
+# 复用一个全局客户端（使用 ADC 或服务账号）
+genai_client = genai.Client()
+
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()
@@ -65,31 +99,51 @@ def generate():
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
-    filename = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-    filepath = os.path.join("output", filename)
+    # 规范化到 Imagen 支持的参数
+    aspect_ratio = pick_aspect_ratio(width, height)
+    image_size = pick_image_size(width, height)
 
-    response = requests.post(
-        "https://api.stability.ai/v2beta/stable-image/generate/core",
-        headers={
-            "authorization": f"Bearer {api_key}",
-            "accept": "image/*"
-        },
-        files={"none": ''},
-        data={
-            "prompt": prompt,
-            "output_format": "png",
-            "aspect_ratio": "1:1",
-            "width": width,
-            "height": height
-        },
-    )
+    # 可选：前端也可以单独传 aspectRatio / imageSize，后端以它们为准
+    if "aspectRatio" in data:
+        ar = str(data["aspectRatio"])
+        if ar in {"1:1","3:4","4:3","9:16","16:9"}:
+            aspect_ratio = ar
+    if "imageSize" in data:
+        sz = str(data["imageSize"]).upper()
+        if sz in {"1K","2K"}:
+            image_size = sz
 
-    if response.status_code == 200:
-        with open(filepath, "wb") as f:
-            f.write(response.content)
-        return jsonify({"image_url": f"/output/{filename}"})
-    else:
-        return jsonify({"error": "Image generation failed", "details": response.text}), 500
+    try:
+        resp = genai_client.models.generate_images(
+            model=IMAGEN_MODEL,
+            prompt=prompt,
+            config=genai_types.GenerateImagesConfig(
+                number_of_images=1,
+                image_size=image_size,     # "1K" 或 "2K"
+                aspect_ratio=aspect_ratio, # 固定集合
+                # 需要可选开关人像生成时可加：person_generation="allow_adult"
+                # negative_prompt=...   # 视 SDK 版本与模型支持情况
+                # seed=...              # 可选
+            ),
+        )
+
+        if not resp.generated_images:
+            return jsonify({"error": "No image generated", "details": str(resp)}), 500
+
+        img = resp.generated_images[0].image  # PIL.Image 或带 bytes 的对象
+        # SDK Python 返回对象自带 save()；若是 bytes 则自行转存
+        filename = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+        filepath = os.path.join("output", filename)
+        img.save(filepath)
+
+        return jsonify({"image_url": f"/output/{filename}",
+                        "aspect_ratio": aspect_ratio,
+                        "image_size": image_size,
+                        "model": IMAGEN_MODEL})
+    except Exception as e:
+        # 打印更详细的错误，便于排查配额/权限/区域问题
+        return jsonify({"error": "Image generation failed", "details": str(e)}), 500
+# ====================== 关键改造结束 ======================
 
 @app.route("/generate-prompt", methods=["POST"])
 def generate_prompt():
