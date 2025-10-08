@@ -43,7 +43,58 @@
     </div>
   </main>
 
+  <div style="position:fixed;right:8px;bottom:8px;z-index:99999;background:#000;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;">
+    <button id="btn-hello" style="margin-right:8px;">HELLO</button>
+    <button id="btn-ping">PING</button>
+    <span id="debug-status" style="margin-left:8px;opacity:.8">idle</span>
+  </div>
+
 <script>
+(function(){
+  const $status = document.getElementById('debug-status');
+  const $hello  = document.getElementById('btn-hello');
+  const $ping   = document.getElementById('btn-ping');
+
+  // 计算父页 origin（若拿不到 referrer 就先用 * 做目标；等通了再收紧）
+  let PARENT_ORIGIN = '*';
+  try {
+    if (document.referrer) PARENT_ORIGIN = new URL(document.referrer).origin;
+  } catch {}
+
+  function setStatus(msg){ $status.textContent = msg; console.log('[Child][DEBUG]', msg); }
+
+  // 监听父页回执
+  window.addEventListener('message', (event) => {
+    console.log('[Child][DEBUG] message from', event.origin, 'data =', event.data);
+    const data = event.data || {};
+    if (data.type === 'PONG') {
+      setStatus('PONG ✅ (ts=' + data.ts + ')');
+    }
+    if (data.type === 'HELLO_FROM_PARENT') {
+      setStatus('HELLO_FROM_PARENT ✅');
+    }
+    // 你也可以在这里监听 STICKER_ADD_TO_CART_FAILED 等业务回执
+  });
+
+  // 测试 1：打招呼（父页回 HELLO_FROM_PARENT）
+  $hello.addEventListener('click', () => {
+    setStatus('send HELLO_FROM_CHILD → ' + PARENT_ORIGIN);
+    window.parent.postMessage({ type: 'HELLO_FROM_CHILD', ts: Date.now() }, PARENT_ORIGIN);
+  });
+
+  // 测试 2：PING（父页回 PONG）
+  $ping.addEventListener('click', () => {
+    setStatus('send PING → ' + PARENT_ORIGIN);
+    window.parent.postMessage({ type: 'PING', ts: Date.now() }, PARENT_ORIGIN);
+  });
+
+  // 页面加载后自动先打个招呼（可选）
+  window.addEventListener('load', () => {
+    setStatus('auto HELLO_FROM_CHILD → ' + PARENT_ORIGIN);
+    window.parent.postMessage({ type: 'HELLO_FROM_CHILD', ts: Date.now() }, PARENT_ORIGIN);
+  });
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   // ======= 你的店铺配置（已替换为你提供的）=======
   const SHOP_DOMAIN = 'https://www.getsiplit.com'; // ← 你的前台域名（含 https）
