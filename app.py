@@ -6,16 +6,13 @@ from PIL import Image, ImageDraw
 import requests
 from werkzeug.utils import secure_filename
 import uuid
-
-# === 新增：Google GenAI SDK ===
 from google import genai
 from google.genai import types as genai_types
 
+IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+
 # Load environment variables
 load_dotenv()
-
-# （Stability 的 key 不再需要）
-# api_key = os.getenv("STABILITY_API_KEY")
 
 app = Flask(__name__)
 os.makedirs("output", exist_ok=True)
@@ -87,7 +84,21 @@ def pick_image_size(width: int, height: int) -> str:
 IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
 
 # 复用一个全局客户端（使用 ADC 或服务账号）
-genai_client = genai.Client()
+
+# 延迟创建 Google GenAI 客户端（本地用 API Key；线上可走 ADC）
+VTX_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT") or "<你的GCP_PROJECT_ID>"
+VTX_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+_genai_client = None
+def get_genai_client():
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = genai.Client(
+            vertexai=True,           # ← 强制走 Vertex
+            project=VTX_PROJECT,
+            location=VTX_LOCATION,
+        )
+    return _genai_client
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -113,35 +124,40 @@ def generate():
         if sz in {"1K","2K"}:
             image_size = sz
 
+    client = get_genai_client()
+    if not client:
+        return jsonify({"error": "GenAI client not initialized. Set GOOGLE_API_KEY or ADC."}), 500
+
     try:
-        resp = genai_client.models.generate_images(
+        resp = client.models.generate_images(
             model=IMAGEN_MODEL,
             prompt=prompt,
             config=genai_types.GenerateImagesConfig(
                 number_of_images=1,
-                image_size=image_size,     # "1K" 或 "2K"
-                aspect_ratio=aspect_ratio, # 固定集合
-                # 需要可选开关人像生成时可加：person_generation="allow_adult"
-                # negative_prompt=...   # 视 SDK 版本与模型支持情况
-                # seed=...              # 可选
+                image_size=image_size,
+                aspect_ratio=aspect_ratio,
             ),
         )
 
         if not resp.generated_images:
             return jsonify({"error": "No image generated", "details": str(resp)}), 500
 
-        img = resp.generated_images[0].image  # PIL.Image 或带 bytes 的对象
-        # SDK Python 返回对象自带 save()；若是 bytes 则自行转存
+        # ↓ 正确处理返回的字节
+        img_bytes = resp.generated_images[0].image
         filename = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
         filepath = os.path.join("output", filename)
-        img.save(filepath)
+        with open(filepath, "wb") as f:
+            # 有的版本是字段 .image_bytes；做个兼容
+            f.write(getattr(img_bytes, "image_bytes", img_bytes))
 
-        return jsonify({"image_url": f"/output/{filename}",
-                        "aspect_ratio": aspect_ratio,
-                        "image_size": image_size,
-                        "model": IMAGEN_MODEL})
+        return jsonify({
+            "image_url": f"/output/{filename}",
+            "aspect_ratio": aspect_ratio,
+            "image_size": image_size,
+            "model": IMAGEN_MODEL
+        })
     except Exception as e:
-        # 打印更详细的错误，便于排查配额/权限/区域问题
+        app.logger.exception("Generate failed")
         return jsonify({"error": "Image generation failed", "details": str(e)}), 500
 # ====================== 关键改造结束 ======================
 
