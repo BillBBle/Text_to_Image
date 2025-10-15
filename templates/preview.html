@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>Preview Sticker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=8" />
   <style>
     .action-buttons{ display:flex; gap:10px; margin-top:14px }
     .tune-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid #111; background:#fff; color:#111; cursor:pointer; }
@@ -51,43 +51,26 @@
 <script>
 /** ====== 店铺/商品配置（按需修改） ====== */
 const SHOP_DOMAIN         = 'https://www.getsiplit.com';  // 你的店铺域名（带 https）
-const DEFAULT_VARIANT_ID  = '50339879977245';             // 兜底变体ID（也可由父页替换）
+const DEFAULT_VARIANT_ID  = '50339879977245';             // 兜底变体ID
+const ACK_TIMEOUT_MS      = 1500;
 /** ===================================== */
 
 const imgEl = document.getElementById('preview-img');
 
-let currentWidth  = 0;    // 记录最近一次 resize 的尺寸（仅用于加车属性展示）
+let currentWidth  = 0;
 let currentHeight = 0;
-let currentShape  = '';   // 记录最近一次 reshape 的形状
-let currentNotes  = '';   // 预留：备注
+let currentShape  = '';
+let currentNotes  = '';
 
-// 工具：把绝对URL转成相对路径，便于传给后端API
 function toRelPath(url) {
-  try {
-    const u = new URL(url, window.location.origin);
-    // 你的后端期望 '/static/...' 或 'output/...'
-    return u.pathname.replace(/^\/+/, '');
-  } catch {
-    return url.replace(/^\/+/, '');
-  }
+  try { const u = new URL(url, window.location.origin); return u.pathname.replace(/^\/+/, ''); }
+  catch { return url.replace(/^\/+/, ''); }
 }
-// 工具：读取当前图的最新 URL（避免旧变量不更新的问题）
-function getCurrentImageUrl() {
-  return imgEl.src;
-}
-// 工具：是否在 iframe 中
-function inIframe() {
-  try { return window.self !== window.top; } catch { return true; }
-}
-// 工具：推断父页面 origin（严格安全最好父页硬编码校验；这里用 referrer 兜底）
-function getParentOrigin() {
-  try {
-    if (document.referrer) return new URL(document.referrer).origin;
-  } catch {}
-  return '*'; // 找不到就退而求其次；父页会做严格 origin 校验
-}
+function getCurrentImageUrl() { return imgEl.src; }
+function inIframe() { try { return window.self !== window.top; } catch { return true; } }
+function getParentOrigin() { try { if (document.referrer) return new URL(document.referrer).origin; } catch {} return '*'; }
 
-/** ====== 交互：Resize / Reshape / Download ====== */
+/** ====== Resize / Reshape / Download ====== */
 document.getElementById('btn-resize').addEventListener('click', async () => {
   const w = prompt('New width (px)?',  '512');
   const h = prompt('New height (px)?', '512');
@@ -107,13 +90,9 @@ document.getElementById('btn-resize').addEventListener('click', async () => {
     if (data.resized_url) {
       currentWidth  = parseInt(w,10);
       currentHeight = parseInt(h,10);
-      imgEl.src = data.resized_url + '?t=' + Date.now(); // 强刷缓存
-    } else {
-      alert('Resize failed');
-    }
-  } catch (e) {
-    alert('Resize error: ' + e);
-  }
+      imgEl.src = data.resized_url + '?t=' + Date.now();
+    } else { alert('Resize failed'); }
+  } catch (e) { alert('Resize error: ' + e); }
 });
 
 document.getElementById('btn-reshape').addEventListener('click', async () => {
@@ -133,12 +112,8 @@ document.getElementById('btn-reshape').addEventListener('click', async () => {
     if (data.reshaped_url) {
       currentShape = s;
       imgEl.src = data.reshaped_url + '?t=' + Date.now();
-    } else {
-      alert('Reshape failed');
-    }
-  } catch (e) {
-    alert('Reshape error: ' + e);
-  }
+    } else { alert('Reshape failed'); }
+  } catch (e) { alert('Reshape error: ' + e); }
 });
 
 document.getElementById('btn-download').addEventListener('click', () => {
@@ -150,57 +125,71 @@ document.getElementById('btn-download').addEventListener('click', () => {
   a.remove();
 });
 
-/** ====== Confirm：优先 postMessage 给父页；失败则跳转中转页 ====== */
+/** ====== Confirm：postMessage→等待ACK；超时→跳中转页 ====== */
 document.getElementById('btn-confirm').addEventListener('click', () => {
   const imageUrl = getCurrentImageUrl();
+  const variantId = new URLSearchParams(location.search).get('variant_id') || DEFAULT_VARIANT_ID;
 
-  // 1) 如果在 iframe 中，优先发消息给父页面，让父页用 /cart/add.js 加车
-  if (inIframe()) {
-    const parentOrigin = getParentOrigin(); // 父页脚本会严格校验 origin
-    const payload = {
-      type: 'STICKER_CONFIRM',
-      quantity: 1,
-      // 可选：从 URL query 里拿 variant_id 作为覆盖（ ?variant_id=12345 ）
-      variantId: new URLSearchParams(location.search).get('variant_id') || DEFAULT_VARIANT_ID,
-      imageUrl,
-      width:  currentWidth  || 0,
-      height: currentHeight || 0,
-      shape:  currentShape  || '',
-      notes:  currentNotes  || ''
-    };
+  const payload = {
+    type: 'STICKER_CONFIRM',
+    quantity: 1,
+    variantId,
+    imageUrl,
+    width:  currentWidth  || 0,
+    height: currentHeight || 0,
+    shape:  currentShape  || '',
+    notes:  currentNotes  || ''
+  };
 
-    try {
-      window.parent.postMessage(payload, parentOrigin);
-      // 留给父页去跳 /cart 或打开抽屉；这里不再跳转
-      return;
-    } catch (e) {
-      console.warn('[Preview] postMessage failed, will fallback:', e);
-      // 继续走兜底
+  // 不在 iframe 中：直接兜底
+  if (!inIframe()) return fallbackToHandoff(payload);
+
+  let handled = false;
+  const onAck = (evt) => {
+    const d = evt.data || {};
+    if (d.type === 'STICKER_HANDLED') {
+      handled = true;
+      window.removeEventListener('message', onAck);
+      if (d.status !== 'ok') fallbackToHandoff(payload);
     }
-  }
-
-  // 2) 兜底：不在 iframe 或父页未处理 → 跳到店铺中转页 /pages/sticker-add
-  const params = new URLSearchParams({
-    id:        new URLSearchParams(location.search).get('variant_id') || DEFAULT_VARIANT_ID,
-    quantity: '1',
-    image_url: imageUrl,
-    size: (currentWidth && currentHeight) ? `${currentWidth}x${currentHeight}px` : '',
-    shape: currentShape || '',
-    notes: currentNotes || ''
-  });
-  const handoffUrl = `${SHOP_DOMAIN.replace(/\/$/,'')}/pages/sticker-add?${params.toString()}`;
+  };
+  window.addEventListener('message', onAck);
 
   try {
-    window.top.location.href = handoffUrl;
-  } catch {
-    const a = document.createElement('a');
-    a.href = handoffUrl;
-    a.target = '_top';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const parentOrigin = getParentOrigin();
+    window.parent.postMessage(payload, parentOrigin);
+  } catch (e) {
+    console.warn('[Preview] postMessage throw, fallback:', e);
+    window.removeEventListener('message', onAck);
+    return fallbackToHandoff(payload);
   }
+
+  setTimeout(() => {
+    if (!handled) {
+      console.warn('[Preview] no ACK from parent, fallback to handoff');
+      window.removeEventListener('message', onAck);
+      fallbackToHandoff(payload);
+    }
+  }, ACK_TIMEOUT_MS);
 });
+
+function fallbackToHandoff(p) {
+  const params = new URLSearchParams({
+    id:        p.variantId,
+    quantity:  p.quantity,
+    image_url: p.imageUrl,
+    size: (p.width && p.height) ? `${p.width}x${p.height}px` : '',
+    shape: p.shape || '',
+    notes: p.notes || ''
+  });
+  const handoffUrl = `${SHOP_DOMAIN.replace(/\/$/,'')}/pages/sticker-add?${params.toString()}`;
+  try { window.top.location.href = handoffUrl; }
+  catch {
+    const a = document.createElement('a');
+    a.href = handoffUrl; a.target = '_top';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+}
 </script>
 </body>
 </html>
