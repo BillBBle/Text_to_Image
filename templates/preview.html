@@ -4,7 +4,14 @@
   <meta charset="UTF-8" />
   <title>Preview Sticker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7" />
+  <style>
+    .action-buttons{ display:flex; gap:10px; margin-top:14px }
+    .tune-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid #111; background:#fff; color:#111; cursor:pointer; }
+    .generate-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid #111; background:#111; color:#fff; cursor:pointer; }
+    .resize-btn,.reshape-btn,.copy-btn{ height:34px; padding:0 10px; border-radius:8px; border:1px solid #D0D4DA; background:#fff; cursor:pointer }
+    .preview-toolbar .tool-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  </style>
 </head>
 <body class="preview active-chat">
   <header class="chat-header">
@@ -13,83 +20,187 @@
 
   <main class="chat-shell" id="chat-shell">
     <h1 class="welcome">Preview Your Sticker</h1>
-  
-    <!-- chat-box 作为整体容器，里面放一个卡片 -->
+
     <div id="chat-box" class="chat-box">
       <div class="preview-card">
         <div class="preview-title">🖼️ Your Uploaded Image</div>
-  
+
         <div class="image-frame">
           <img id="preview-img"
                class="preview-image"
                src="{{ url_for('serve_upload', filename=filename) }}"
                alt="Uploaded image">
         </div>
-  
+
         <div class="preview-toolbar">
-            <div class="tool-row">
-                <button class="resize-btn"  onclick="resizeImage()">🔧 Resize</button>
-                <button class="reshape-btn" onclick="reshapeImage()">🔲 Reshape</button>
-                <button class="copy-btn"    onclick="downloadImage()">⬇️ Download</button>
-              </div>
+          <div class="tool-row">
+            <button class="resize-btn"  id="btn-resize">🔧 Resize</button>
+            <button class="reshape-btn" id="btn-reshape">🔲 Reshape</button>
+            <button class="copy-btn"    id="btn-download">⬇️ Download</button>
+          </div>
         </div>
       </div>
     </div>
-  
+
     <div class="action-buttons">
       <a class="tune-btn" href="/upload">← Back</a>
-      <a class="generate-btn" href="/">✅ Confirm</a>
+      <button class="generate-btn" id="btn-confirm">✅ Confirm</button>
     </div>
   </main>
 
 <script>
-const imgUrl = document.getElementById("preview-img").src;
+/** ====== 店铺/商品配置（按需修改） ====== */
+const SHOP_DOMAIN         = 'https://www.getsiplit.com';  // 你的店铺域名（带 https）
+const DEFAULT_VARIANT_ID  = '50339879977245';             // 兜底变体ID（也可由父页替换）
+/** ===================================== */
 
-function resizeImage() {
-  const width = prompt("New width?", "512");
-  const height = prompt("New height?", "512");
-  if (!width || !height) return;
+const imgEl = document.getElementById('preview-img');
 
-  fetch("/resize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: imgUrl.replace(location.origin + "/", ""), width: parseInt(width), height: parseInt(height) })
-  })
-  .then(res => res.json())
-  .then(data => {
+let currentWidth  = 0;    // 记录最近一次 resize 的尺寸（仅用于加车属性展示）
+let currentHeight = 0;
+let currentShape  = '';   // 记录最近一次 reshape 的形状
+let currentNotes  = '';   // 预留：备注
+
+// 工具：把绝对URL转成相对路径，便于传给后端API
+function toRelPath(url) {
+  try {
+    const u = new URL(url, window.location.origin);
+    // 你的后端期望 '/static/...' 或 'output/...'
+    return u.pathname.replace(/^\/+/, '');
+  } catch {
+    return url.replace(/^\/+/, '');
+  }
+}
+// 工具：读取当前图的最新 URL（避免旧变量不更新的问题）
+function getCurrentImageUrl() {
+  return imgEl.src;
+}
+// 工具：是否在 iframe 中
+function inIframe() {
+  try { return window.self !== window.top; } catch { return true; }
+}
+// 工具：推断父页面 origin（严格安全最好父页硬编码校验；这里用 referrer 兜底）
+function getParentOrigin() {
+  try {
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch {}
+  return '*'; // 找不到就退而求其次；父页会做严格 origin 校验
+}
+
+/** ====== 交互：Resize / Reshape / Download ====== */
+document.getElementById('btn-resize').addEventListener('click', async () => {
+  const w = prompt('New width (px)?',  '512');
+  const h = prompt('New height (px)?', '512');
+  if (!w || !h) return;
+
+  try {
+    const res = await fetch('/resize', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        image_url: toRelPath(getCurrentImageUrl()),
+        width: parseInt(w,10),
+        height: parseInt(h,10)
+      })
+    });
+    const data = await res.json();
     if (data.resized_url) {
-      document.getElementById("preview-img").src = data.resized_url + "?t=" + Date.now();
+      currentWidth  = parseInt(w,10);
+      currentHeight = parseInt(h,10);
+      imgEl.src = data.resized_url + '?t=' + Date.now(); // 强刷缓存
     } else {
-      alert("Resize failed");
+      alert('Resize failed');
     }
-  });
-}
+  } catch (e) {
+    alert('Resize error: ' + e);
+  }
+});
 
-function reshapeImage() {
-  const shape = prompt("Shape? (circle, rounded, square)", "circle");
-  if (!shape) return;
+document.getElementById('btn-reshape').addEventListener('click', async () => {
+  const s = (prompt('Shape? (circle, rounded, square)', 'circle') || '').toLowerCase();
+  if (!['circle','rounded','square'].includes(s)) { alert('Invalid shape'); return; }
 
-  fetch("/reshape", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: imgUrl.replace(location.origin + "/", ""), shape: shape })
-  })
-  .then(res => res.json())
-  .then(data => {
+  try {
+    const res = await fetch('/reshape', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        image_url: toRelPath(getCurrentImageUrl()),
+        shape: s
+      })
+    });
+    const data = await res.json();
     if (data.reshaped_url) {
-      document.getElementById("preview-img").src = data.reshaped_url + "?t=" + Date.now();
+      currentShape = s;
+      imgEl.src = data.reshaped_url + '?t=' + Date.now();
     } else {
-      alert("Reshape failed");
+      alert('Reshape failed');
     }
-  });
-}
+  } catch (e) {
+    alert('Reshape error: ' + e);
+  }
+});
 
-function downloadImage() {
+document.getElementById('btn-download').addEventListener('click', () => {
   const a = document.createElement('a');
-  a.href = document.getElementById("preview-img").src;
-  a.download = "sticker.png";
+  a.href = getCurrentImageUrl();
+  a.download = 'sticker.png';
+  document.body.appendChild(a);
   a.click();
-}
+  a.remove();
+});
+
+/** ====== Confirm：优先 postMessage 给父页；失败则跳转中转页 ====== */
+document.getElementById('btn-confirm').addEventListener('click', () => {
+  const imageUrl = getCurrentImageUrl();
+
+  // 1) 如果在 iframe 中，优先发消息给父页面，让父页用 /cart/add.js 加车
+  if (inIframe()) {
+    const parentOrigin = getParentOrigin(); // 父页脚本会严格校验 origin
+    const payload = {
+      type: 'STICKER_CONFIRM',
+      quantity: 1,
+      // 可选：从 URL query 里拿 variant_id 作为覆盖（ ?variant_id=12345 ）
+      variantId: new URLSearchParams(location.search).get('variant_id') || DEFAULT_VARIANT_ID,
+      imageUrl,
+      width:  currentWidth  || 0,
+      height: currentHeight || 0,
+      shape:  currentShape  || '',
+      notes:  currentNotes  || ''
+    };
+
+    try {
+      window.parent.postMessage(payload, parentOrigin);
+      // 留给父页去跳 /cart 或打开抽屉；这里不再跳转
+      return;
+    } catch (e) {
+      console.warn('[Preview] postMessage failed, will fallback:', e);
+      // 继续走兜底
+    }
+  }
+
+  // 2) 兜底：不在 iframe 或父页未处理 → 跳到店铺中转页 /pages/sticker-add
+  const params = new URLSearchParams({
+    id:        new URLSearchParams(location.search).get('variant_id') || DEFAULT_VARIANT_ID,
+    quantity: '1',
+    image_url: imageUrl,
+    size: (currentWidth && currentHeight) ? `${currentWidth}x${currentHeight}px` : '',
+    shape: currentShape || '',
+    notes: currentNotes || ''
+  });
+  const handoffUrl = `${SHOP_DOMAIN.replace(/\/$/,'')}/pages/sticker-add?${params.toString()}`;
+
+  try {
+    window.top.location.href = handoffUrl;
+  } catch {
+    const a = document.createElement('a');
+    a.href = handoffUrl;
+    a.target = '_top';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+});
 </script>
 </body>
 </html>

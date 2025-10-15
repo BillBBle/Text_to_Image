@@ -4,86 +4,98 @@
   <meta charset="UTF-8" />
   <title>Sticker Generator — Upload</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7">
 
   <style>
     :root { --black:#111; --gray:#e5e7eb; --text:#333; --brand:#111; }
     body { background:#f6f7f9; font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; }
     .chat-header{ position: sticky; top:0; z-index:10; background:var(--black); color:#fff; padding:12px 16px; }
     .chat-shell{ max-width:980px; margin:24px auto; padding:0 16px; }
-    .chat-box .msg{ background:#fff; border:1px solid var(--gray); border-radius:12px; padding:14px; margin:10px 0; }
-    .generate-btn,.tune-btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--brand); background:var(--brand); color:#fff; cursor:pointer; }
-    .tune-btn{ background:#fff; color:var(--brand) }
-    .action-buttons{ display:flex; gap:10px; margin-top:14px }
+    .msg{ background:#fff; border:1px solid var(--gray); border-radius:12px; padding:14px; margin:10px 0; }
+    .btn{ display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--brand); cursor:pointer; }
+    .btn-primary{ background:var(--brand); color:#fff; }
+    .btn-ghost{ background:#fff; color:var(--brand); }
+    .btn[disabled]{ opacity:.6; cursor:not-allowed; }
     .mini-btn{ height:34px; padding:0 10px; border-radius:8px; border:1px solid #D0D4DA; background:#fff; cursor:pointer }
     #dropzone{ width:100%; min-height:140px; background:#fff; border:2px dashed #cbd5e1; border-radius:12px; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px; transition: border-color .2s ease; }
   </style>
 </head>
 
 <body>
-  <header class="chat-header"><div>Sticker Generator — Upload (iframe)</div></header>
+  <header class="chat-header"><div>Sticker Generator — Upload</div></header>
 
   <main class="chat-shell">
     <h1 style="font-size:20px;font-weight:700;">Upload an image to create your sticker</h1>
 
-    <div id="chat-box" class="chat-box"></div>
+    <div id="messages"></div>
 
     <div id="dropzone">
       <div>
         <p style="margin-bottom:8px; color:#555;">Drag & drop your image here (PNG/JPG/WebP/GIF, &lt; 10MB)</p>
         <input id="file-input" type="file" accept="image/*" style="display:none;">
-        <button class="generate-btn" id="choose-btn">Choose a file</button>
+        <button class="btn btn-primary" id="choose-btn">Choose a file</button>
         <div id="file-info" style="margin-top:10px; color:#333;"></div>
       </div>
     </div>
 
-    <div class="action-buttons">
-      <a class="tune-btn" href="/">← Back</a>
-      <button class="generate-btn" id="upload-btn">📦 Upload & Preview</button>
+    <div class="action-buttons" style="display:flex; gap:10px; margin-top:14px">
+      <a class="btn btn-ghost" href="/">← Back</a>
+      <button class="btn btn-primary" id="upload-btn" disabled>📦 Upload & Preview</button>
     </div>
   </main>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // ======= 店铺配置 =======
-  const SHOP_DOMAIN = 'https://www.getsiplit.com'; // 你的前台域名（含 https）
-  const VARIANT_ID  = '50339879977245';            // 可售变体 ID
-  // ========================
-
-  const chatBox  = document.getElementById('chat-box');
-  const fileIn   = document.getElementById('file-input');
-  const choose   = document.getElementById('choose-btn');
-  const upload   = document.getElementById('upload-btn');
+  const messages = document.getElementById('messages');
   const dropzone = document.getElementById('dropzone');
+  const choose   = document.getElementById('choose-btn');
+  const fileIn   = document.getElementById('file-input');
   const fileInfo = document.getElementById('file-info');
+  const upload   = document.getElementById('upload-btn');
+
+  const ALLOWED = ['image/png','image/jpeg','image/webp','image/gif'];
+  const MAX_SIZE = 10 * 1024 * 1024; // 10MB，与后端一致
+
+  let selectedFile = null;
 
   // 小工具
-  function appendMsg(text) {
+  function msg(text){
     const box = document.createElement('div');
     box.className = 'msg';
     box.textContent = text;
-    chatBox.appendChild(box);
-    box.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    messages.appendChild(box);
+    box.scrollIntoView({behavior:'smooth',block:'end'});
   }
-  function setBusy(btn, busy, labelWhenBusy) {
-    if (!btn) return;
-    if (busy) {
-      btn.dataset._oldText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = labelWhenBusy || 'Working...';
-    } else {
-      btn.disabled = false;
-      if (btn.dataset._oldText) btn.textContent = btn.dataset._oldText;
+  function setBusy(btn, busy, labelBusy){
+    if(!btn) return;
+    if(busy){ btn.dataset._old = btn.textContent; btn.disabled = true; btn.textContent = labelBusy||'Working...'; }
+    else{ btn.disabled = !selectedFile; if(btn.dataset._old){ btn.textContent = btn.dataset._old; } }
+  }
+  function renderFileInfo(){
+    messages.innerHTML = '';
+    fileInfo.innerHTML = '';
+    upload.disabled = !selectedFile;
+    if(!selectedFile) return;
+
+    const okType = ALLOWED.includes(selectedFile.type);
+    const okSize = selectedFile.size <= MAX_SIZE;
+    const sizeKB = Math.round(selectedFile.size/1024);
+
+    fileInfo.innerHTML = `
+      Selected: ${selectedFile.name} (${sizeKB} KB)
+      <button class="mini-btn" id="remove-btn">❌ Remove</button>
+      <div style="margin-top:6px; color:${okType && okSize ? '#16a34a' : '#dc2626'}">
+        ${okType ? '✓ Type OK' : '✗ Unsupported type'}
+        &nbsp;•&nbsp;
+        ${okSize ? '✓ Size OK' : '✗ Too large (>10MB)'}
+      </div>
+    `;
+
+    if(!okType || !okSize){
+      upload.disabled = true;
+      msg('⚠️ Please choose a PNG/JPG/WebP/GIF within 10MB.');
     }
   }
-
-  // 当前成品信息（Confirm 用）
-  let selectedFile    = null;
-  let currentImageUrl = '';
-  let currentWidth    = 0;
-  let currentHeight   = 0;
-  let currentShape    = '';
-  let currentNotes    = '';
 
   // 选择/拖拽
   choose.addEventListener('click', () => fileIn.click());
@@ -92,167 +104,40 @@ document.addEventListener('DOMContentLoaded', () => {
   ['dragenter','dragover'].forEach(evt =>
     dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#6366f1'; })
   );
-  ['dragleave','drop'   ].forEach(evt =>
+  ['dragleave','drop'].forEach(evt =>
     dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.style.borderColor = '#cbd5e1'; })
   );
   dropzone.addEventListener('drop', e => { selectedFile = e.dataTransfer.files?.[0] || null; renderFileInfo(); });
 
-  function renderFileInfo(){
-    fileInfo.innerHTML = '';
-    chatBox.innerHTML  = '';
-    if(!selectedFile) return;
-    const sizeKB = Math.round(selectedFile.size/1024);
-    fileInfo.innerHTML = `
-      Selected: ${selectedFile.name} (${sizeKB} KB)
-      <button class="mini-btn" data-remove>❌ Remove</button>`;
-  }
-
-  // 统一事件委托
-  document.addEventListener('click', async (e) => {
-    const btn = e.target.closest && e.target.closest('button');
-    if (!btn) return;
-
-    // 删除所选文件
-    if (btn.matches('[data-remove]')) {
-      selectedFile = null; fileIn.value = '';
-      fileInfo.innerHTML = '';
-      appendMsg('🗑️ File removed.');
-      return;
+  // 删除按钮（事件委托）
+  document.addEventListener('click', (e) => {
+    if(e.target && e.target.id === 'remove-btn'){
+      selectedFile = null; fileIn.value = ''; renderFileInfo();
+      msg('🗑️ File removed.');
     }
+  });
 
-    // 上传文件并展示预览按钮组
-    if (btn === upload) {
-      if (!selectedFile) { appendMsg('⚠️ Please select a file first.'); return; }
-      setBusy(upload, true, 'Uploading...');
-      try {
-        const form = new FormData(); form.append('file', selectedFile);
-        const res  = await fetch('/upload-image', { method:'POST', body:form });
-        const data = await res.json();
+  // 仅负责上传并跳转到预览页（后端返回 redirect_url）
+  upload.addEventListener('click', async () => {
+    if(!selectedFile){ msg('⚠️ Please select a file first.'); return; }
+    setBusy(upload, true, 'Uploading...');
+    try{
+      const form = new FormData(); form.append('file', selectedFile);
+      const res  = await fetch('/upload-image', { method:'POST', body:form });
+      const data = await res.json();
 
-        if (data.redirect_url) { window.location.href = data.redirect_url; return; }
-        if (!data.image_url)  { appendMsg('⚠️ Upload failed: ' + (data.error || 'Unknown error')); return; }
-
-        // 记录当前图（你后端已保存，我们只拿可访问直链）
-        currentImageUrl = data.image_url;
-        currentWidth = 0; currentHeight = 0; currentShape = ''; currentNotes = '';
-
-        const imgId = 'img-' + Date.now();
-        chatBox.innerHTML = `
-          <div class="msg">
-            ✅ Uploaded!<br/>
-            <img id="${imgId}" src="${data.image_url}" style="max-width:100%; border-radius:12px; margin:8px 0;">
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="mini-btn" data-resize data-img="${imgId}" data-url="${data.image_url}">🔧 Resize</button>
-              <button class="mini-btn" data-reshape data-img="${imgId}" data-url="${data.image_url}">🔲 Reshape</button>
-              <button class="mini-btn" data-download data-url="${data.image_url}">⬇️ Download</button>
-              <button class="generate-btn" data-confirm="confirmation">✅ Confirm</button>
-            </div>
-          </div>`;
-      } catch (err) {
-        appendMsg('⚠️ Error: ' + err);
-      } finally {
-        setBusy(upload, false);
+      if(res.ok && data.redirect_url){
+        window.location.href = data.redirect_url; // e.g. /preview/<filename>
+        return;
       }
-      return;
+      msg('⚠️ Upload failed: ' + (data.error || 'Unknown error'));
+    }catch(err){
+      msg('⚠️ Error: ' + err);
+    }finally{
+      setBusy(upload, false);
     }
-
-    // Resize
-    if (btn.matches('[data-resize]')) {
-      const url   = btn.getAttribute('data-url');
-      const imgId = btn.getAttribute('data-img');
-      const w = prompt('Enter new width (px):',  '512');
-      const h = prompt('Enter new height (px):', '512');
-      if (!w || !h) return;
-
-      try {
-        const res  = await fetch('/resize', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ image_url:url, width:+w, height:+h })
-        });
-        const data = await res.json();
-        if (data.resized_url) {
-          currentImageUrl = data.resized_url;
-          currentWidth  = +w;
-          currentHeight = +h;
-          document.getElementById(imgId).src = data.resized_url + '?t=' + Date.now();
-        } else {
-          appendMsg('Resize failed.');
-        }
-      } catch (err) { appendMsg('Error: ' + err); }
-      return;
-    }
-
-    // Reshape
-    if (btn.matches('[data-reshape]')) {
-      const url   = btn.getAttribute('data-url');
-      const imgId = btn.getAttribute('data-img');
-      const s = (prompt('Enter shape (circle, rounded, square):', 'circle') || '').toLowerCase();
-      if (!['circle','rounded','square'].includes(s)) { appendMsg('Invalid shape!'); return; }
-
-      try {
-        const res  = await fetch('/reshape', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ image_url:url, shape:s })
-        });
-        const data = await res.json();
-        if (data.reshaped_url) {
-          currentImageUrl = data.reshaped_url;
-          currentShape = s;
-          document.getElementById(imgId).src = data.reshaped_url + '?t=' + Date.now();
-        } else {
-          appendMsg('Reshape failed.');
-        }
-      } catch (err) { appendMsg('Error: ' + err); }
-      return;
-    }
-
-    // Download
-    if (btn.matches('[data-download]')) {
-      const a = document.createElement('a');
-      a.href = btn.getAttribute('data-url') || currentImageUrl;
-      a.download = 'sticker.png';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      return;
-    }
-
-    // ✅ Confirm：顶层表单 POST 到 /cart/add（同域最稳），成功后由 Shopify 跳转到 /cart
-    // ✅ Confirm：仅handoff到店铺中转页，真正加车在店铺域执行
-  if (btn.matches('[data-confirm]')) {
-    if (!currentImageUrl) { appendMsg('⚠️ No image yet.'); return; }
-
-    const SHOP_DOMAIN = 'https://www.getsiplit.com';
-    const VARIANT_ID  = '50339879977245';
-
-    const q = new URLSearchParams({
-      id: VARIANT_ID,
-      quantity: '1',
-      image_url: currentImageUrl,
-      size: (currentWidth && currentHeight) ? `${currentWidth}x${currentHeight}px` : '',
-      shape: currentShape || '',
-      notes: currentNotes || ''
-    });
-
-    const handoffUrl = `${SHOP_DOMAIN.replace(/\/$/,'')}/pages/sticker-add?${q.toString()}`;
-    console.log('[Confirm] handoff to:', handoffUrl);
-
-    // 方式A：顶层跳转
-    try {
-      window.top.location.href = handoffUrl;
-    } catch (err) {
-      // 方式B：锚点兜底（某些场景对“用户激活”更友好）
-      const a = document.createElement('a');
-      a.href = handoffUrl;
-      a.target = '_top';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-    return;
-  }
-  });   // 关闭全局 click
-});     // 关闭 DOMContentLoaded
+  });
+});
 </script>
 </body>
 </html>
